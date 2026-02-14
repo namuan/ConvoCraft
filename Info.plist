@@ -1,5 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+    ConvoCraft Info.plist
+    
+    This file contains required permissions and app metadata for the macOS app.
+    When building with Xcode, this file should be included in the app target.
+    
+    Note: Swift Package Manager executable targets don't use Info.plist directly.
+    To create a proper macOS app bundle, use Xcode to create an app target and
+    include this Info.plist file.
+-->
 <plist version="1.0">
 <dict>
     <key>NSMicrophoneUsageDescription</key>

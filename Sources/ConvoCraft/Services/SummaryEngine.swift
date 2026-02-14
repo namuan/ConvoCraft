@@ -1,5 +1,8 @@
 import Foundation
+
+#if canImport(NaturalLanguage)
 import NaturalLanguage
+#endif
 
 actor SummaryEngine {
     func generateSummary(

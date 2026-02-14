@@ -2,6 +2,8 @@
 
 A macOS meeting assistant that provides real-time transcription and AI-driven insights using only Apple frameworks.
 
+> **Note**: This application is designed exclusively for macOS 14.0+ and requires macOS-specific frameworks (SwiftUI, Speech, AVFoundation, ScreenCaptureKit, NaturalLanguage). It will not build on Linux or other platforms.
+
 ## Features
 
 ### During Meetings (Live)
@@ -50,21 +52,34 @@ SpeechTranscriber TranscriptStore   IntelligenceEngine
 
 ## Requirements
 
-- macOS 14.0 or later
+- **macOS 14.0 or later** (required)
 - Microphone permission
 - Speech recognition permission
 - Screen capture permission (for system audio)
 
 ## Building
 
-This is a Swift Package Manager project:
+This is a Swift Package Manager project that **must be built on macOS**:
 
 ```bash
+# On macOS only
 swift build
 swift run
 ```
 
-Or open in Xcode and build/run from there.
+Or open in Xcode (recommended):
+1. Open Package.swift in Xcode
+2. Select the ConvoCraft scheme
+3. Build and run (⌘R)
+
+### Creating an App Bundle
+
+To create a proper macOS app with the Info.plist:
+1. Open in Xcode
+2. Create a new macOS App target
+3. Copy the source files from Sources/ConvoCraft
+4. Copy Info.plist to the app target
+5. Build for distribution
 
 ## Privacy & Security
 
@@ -141,6 +156,13 @@ All long-running operations use Swift's structured concurrency:
 - LLM inference batched (every 10 seconds)
 - Sliding context window prevents memory growth
 - Audio buffers not retained long-term
+
+## Permissions
+
+The Info.plist file contains the required permission descriptions:
+- `NSMicrophoneUsageDescription` - Microphone access for transcription
+- `NSSpeechRecognitionUsageDescription` - Speech recognition for live transcription
+- `NSScreenCaptureDescription` - Screen capture for system audio recording
 
 ## License
 

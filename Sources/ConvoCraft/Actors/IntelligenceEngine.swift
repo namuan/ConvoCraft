@@ -1,9 +1,15 @@
 import Foundation
+
+#if canImport(NaturalLanguage)
 import NaturalLanguage
+#endif
 
 actor IntelligenceEngine {
     private(set) var insights: [IntelligenceInsight] = []
+    
+    #if canImport(NaturalLanguage)
     private let tagger = NLTagger(tagSchemes: [.nameType, .lexicalClass])
+    #endif
     
     func analyzeTranscript(_ segments: [TranscriptSegment]) async -> [IntelligenceInsight] {
         var newInsights: [IntelligenceInsight] = []
@@ -72,7 +78,8 @@ actor IntelligenceEngine {
             }
         }
         
-        // Extract named entities
+        #if canImport(NaturalLanguage)
+        // Extract named entities (only on macOS)
         tagger.string = text
         let range = text.startIndex..<text.endIndex
         tagger.enumerateTags(in: range, unit: .word, scheme: .nameType) { tag, tokenRange in
@@ -85,6 +92,7 @@ actor IntelligenceEngine {
             }
             return true
         }
+        #endif
         
         return Array(detectedInsights.prefix(3)) // Limit to top 3 insights per analysis
     }
