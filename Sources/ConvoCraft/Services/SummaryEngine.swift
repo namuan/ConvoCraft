@@ -33,20 +33,54 @@ actor SummaryEngine {
         )
     }
     
+    private func splitIntoSentences(_ text: String) -> [String] {
+        // Split on period followed by whitespace or end of string
+        // This handles most common cases while being simple
+        let pattern = #"\.(?:\s+|$)"#
+        let regex = try? NSRegularExpression(pattern: pattern)
+        
+        guard let regex = regex else {
+            // Fallback to simple split if regex fails
+            return text.components(separatedBy: ". ").filter { !$0.isEmpty }
+        }
+        
+        let nsString = text as NSString
+        let matches = regex.matches(in: text, range: NSRange(location: 0, length: nsString.length))
+        
+        var sentences: [String] = []
+        var lastIndex = 0
+        
+        for match in matches {
+            let range = match.range
+            let sentence = nsString.substring(with: NSRange(location: lastIndex, length: range.location - lastIndex + 1))
+            sentences.append(sentence.trimmingCharacters(in: .whitespaces))
+            lastIndex = range.location + range.length
+        }
+        
+        // Add remaining text if any
+        if lastIndex < nsString.length {
+            let remaining = nsString.substring(from: lastIndex)
+            let trimmed = remaining.trimmingCharacters(in: .whitespaces)
+            if !trimmed.isEmpty {
+                sentences.append(trimmed)
+            }
+        }
+        
+        return sentences.filter { !$0.isEmpty }
+    }
+    
     private func generateExtractiveSummary(from text: String) -> String {
         guard !text.isEmpty else { return "No transcript available." }
         
-        // Simple extractive summary: take first few sentences
-        let sentences = text.components(separatedBy: ". ")
+        let sentences = splitIntoSentences(text)
         let summaryLength = min(3, sentences.count)
-        let summarySentences = sentences.prefix(summaryLength).joined(separator: ". ")
+        let summarySentences = sentences.prefix(summaryLength).joined(separator: " ")
         
-        return summarySentences.isEmpty ? "Summary unavailable." : summarySentences + "."
+        return summarySentences.isEmpty ? "Summary unavailable." : summarySentences
     }
     
     private func extractActionItems(from text: String) -> [String] {
         var actionItems: [String] = []
-        let lowercased = text.lowercased()
         
         // Look for action-oriented phrases
         let actionPhrases = [
@@ -54,12 +88,12 @@ actor SummaryEngine {
             "follow up", "task", "todo", "to do"
         ]
         
-        let sentences = text.components(separatedBy: ".")
+        let sentences = splitIntoSentences(text)
         for sentence in sentences {
             let lowerSentence = sentence.lowercased()
             for phrase in actionPhrases {
                 if lowerSentence.contains(phrase) {
-                    actionItems.append(sentence.trimmingCharacters(in: .whitespaces))
+                    actionItems.append(sentence)
                     break
                 }
             }
@@ -77,12 +111,12 @@ actor SummaryEngine {
             "going with", "final decision", "consensus"
         ]
         
-        let sentences = text.components(separatedBy: ".")
+        let sentences = splitIntoSentences(text)
         for sentence in sentences {
             let lowerSentence = sentence.lowercased()
             for phrase in decisionPhrases {
                 if lowerSentence.contains(phrase) {
-                    decisions.append(sentence.trimmingCharacters(in: .whitespaces))
+                    decisions.append(sentence)
                     break
                 }
             }
