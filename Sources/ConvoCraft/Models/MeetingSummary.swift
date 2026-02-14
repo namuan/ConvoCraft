@@ -1,6 +1,7 @@
 import Foundation
 
-struct MeetingSummary: Codable {
+struct MeetingSummary: Codable, Hashable, Identifiable {
+    var id: Date { date }
     let title: String
     let date: Date
     let duration: TimeInterval

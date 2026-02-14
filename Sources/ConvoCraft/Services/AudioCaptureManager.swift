@@ -57,15 +57,12 @@ class AudioCaptureManager: NSObject, ObservableObject {
     #if canImport(ScreenCaptureKit)
     @available(macOS 12.3, *)
     private func requestPermission() async throws {
-        guard await SCContentSharingSession.isAvailable else {
-            throw CaptureError.captureNotAvailable
-        }
     }
     
     @available(macOS 12.3, *)
     private func configureCaptureStream() async throws {
         // Get available content
-        let availableContent = try await SCShareableContent.excludingDesktopWindows(
+        let _ = try await SCShareableContent.excludingDesktopWindows(
             false,
             onScreenWindowsOnly: true
         )
@@ -77,8 +74,8 @@ class AudioCaptureManager: NSObject, ObservableObject {
         config.channelCount = 1
         config.excludesCurrentProcessAudio = false
         
-        // Capture microphone if available
-        if #available(macOS 14.0, *) {
+        // Capture microphone if available (macOS 15.0+)
+        if #available(macOS 15.0, *) {
             config.captureMicrophone = true
         }
         

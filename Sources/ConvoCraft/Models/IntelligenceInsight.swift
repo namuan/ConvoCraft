@@ -6,7 +6,7 @@ enum InsightType: String, Codable {
     case risk
 }
 
-struct IntelligenceInsight: Identifiable, Codable {
+struct IntelligenceInsight: Identifiable, Codable, Hashable {
     let id: UUID
     let type: InsightType
     let content: String

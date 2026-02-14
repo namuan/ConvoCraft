@@ -30,9 +30,17 @@ class MeetingSessionController {
         guard !isRecording else { return }
         
         // Request speech recognition authorization
-        let authorized = await speechTranscriber.requestAuthorization()
-        guard authorized else {
+        let authStatus = await speechTranscriber.requestAuthorization()
+        speechTranscriber.updateAuthorizationStatus(authStatus)
+        guard authStatus == .authorized else {
             errorMessage = "Speech recognition not authorized"
+            return
+        }
+        
+        // Request microphone permission
+        let micGranted = await speechTranscriber.requestMicrophonePermission()
+        guard micGranted else {
+            errorMessage = "Microphone not authorized"
             return
         }
         
@@ -114,7 +122,7 @@ class MeetingSessionController {
                 
                 if !recentSegments.isEmpty {
                     // Analyze and get insights
-                    let newInsights = await intelligenceEngine.analyzeTranscript(recentSegments)
+                    let _ = await intelligenceEngine.analyzeTranscript(recentSegments)
                     
                     // Update UI
                     let allInsights = await intelligenceEngine.getAllInsights()

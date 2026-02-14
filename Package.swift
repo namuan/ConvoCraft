@@ -15,5 +15,9 @@ let package = Package(
                 .enableExperimentalFeature("StrictConcurrency")
             ]
         ),
+        .testTarget(
+            name: "ConvoCraftTests",
+            dependencies: ["ConvoCraft"]
+        ),
     ]
 )

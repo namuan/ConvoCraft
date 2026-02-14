@@ -1,6 +1,7 @@
 import Foundation
 import Speech
 import AVFoundation
+import AVFAudio
 
 @MainActor
 class SpeechTranscriber: NSObject, ObservableObject {
@@ -14,14 +15,37 @@ class SpeechTranscriber: NSObject, ObservableObject {
     
     private var transcriptContinuation: AsyncStream<(String, Bool)>.Continuation?
     
-    func requestAuthorization() async -> Bool {
-        await withCheckedContinuation { continuation in
+    nonisolated func requestAuthorization() async -> SFSpeechRecognizerAuthorizationStatus {
+        return await withCheckedContinuation { continuation in
             SFSpeechRecognizer.requestAuthorization { status in
-                Task { @MainActor in
-                    self.authorizationStatus = status
-                    continuation.resume(returning: status == .authorized)
-                }
+                continuation.resume(returning: status)
             }
+        }
+    }
+    
+    func requestMicrophonePermission() async -> Bool {
+        return await withCheckedContinuation { continuation in
+            AVCaptureDevice.requestAccess(for: .audio) { granted in
+                continuation.resume(returning: granted)
+            }
+        }
+    }
+    
+    func updateAuthorizationStatus(_ status: SFSpeechRecognizerAuthorizationStatus) {
+        self.authorizationStatus = status
+    }
+    
+    // Helper function to set up audio tap without actor isolation issues
+    nonisolated private func setupAudioTap(
+        inputNode: AVAudioInputNode,
+        recognitionRequest: SFSpeechAudioBufferRecognitionRequest
+    ) {
+        let recordingFormat = inputNode.outputFormat(forBus: 0)
+        
+        inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { (buffer: AVAudioPCMBuffer, _: AVAudioTime) in
+            // This closure runs on a real-time audio thread
+            // recognitionRequest.append() is thread-safe
+            recognitionRequest.append(buffer)
         }
     }
     
@@ -70,18 +94,11 @@ class SpeechTranscriber: NSObject, ObservableObject {
             }
         }
         
-        // Configure audio session
-        let audioSession = AVAudioSession.sharedInstance()
-        try audioSession.setCategory(.record, mode: .measurement, options: .duckOthers)
-        try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
-        
         // Configure audio engine
         let inputNode = audioEngine.inputNode
-        let recordingFormat = inputNode.outputFormat(forBus: 0)
         
-        inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { buffer, _ in
-            self.recognitionRequest?.append(buffer)
-        }
+        // Set up audio tap using nonisolated helper to avoid actor isolation issues
+        setupAudioTap(inputNode: inputNode, recognitionRequest: recognitionRequest)
         
         audioEngine.prepare()
         try audioEngine.start()
