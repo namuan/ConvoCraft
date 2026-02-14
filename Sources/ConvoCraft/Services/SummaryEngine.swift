@@ -34,13 +34,28 @@ actor SummaryEngine {
     }
     
     private func splitIntoSentences(_ text: String) -> [String] {
-        // Split on period followed by whitespace or end of string
-        // This handles most common cases while being simple
-        let pattern = #"\.(?:\s+|$)"#
+        #if canImport(NaturalLanguage)
+        // Use NLTokenizer for robust sentence tokenization when available
+        let tokenizer = NLTokenizer(unit: .sentence)
+        tokenizer.string = text
+        var sentences: [String] = []
+        
+        tokenizer.enumerateTokens(in: text.startIndex..<text.endIndex) { range, _ in
+            let sentence = String(text[range]).trimmingCharacters(in: .whitespaces)
+            if !sentence.isEmpty {
+                sentences.append(sentence)
+            }
+            return true
+        }
+        
+        return sentences
+        #else
+        // Fallback implementation for non-macOS platforms
+        // Split on period, question mark, or exclamation point followed by whitespace or end
+        let pattern = #"[.!?](?:\s+|$)"#
         let regex = try? NSRegularExpression(pattern: pattern)
         
         guard let regex = regex else {
-            // Fallback to simple split if regex fails
             return text.components(separatedBy: ". ").filter { !$0.isEmpty }
         }
         
@@ -57,7 +72,6 @@ actor SummaryEngine {
             lastIndex = range.location + range.length
         }
         
-        // Add remaining text if any
         if lastIndex < nsString.length {
             let remaining = nsString.substring(from: lastIndex)
             let trimmed = remaining.trimmingCharacters(in: .whitespaces)
@@ -67,6 +81,7 @@ actor SummaryEngine {
         }
         
         return sentences.filter { !$0.isEmpty }
+        #endif
     }
     
     private func generateExtractiveSummary(from text: String) -> String {

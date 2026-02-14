@@ -132,11 +132,17 @@ extension AudioCaptureManager: SCStreamOutput {
     nonisolated func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
         guard type == .audio else { return }
         
-        // Convert CMSampleBuffer to Data
-        // This is a simplified version - real implementation would convert to AVAudioPCMBuffer
+        // TODO: Convert CMSampleBuffer to actual PCM audio data
+        // This requires:
+        // 1. Extract audio buffer list from CMSampleBuffer
+        // 2. Convert to AVAudioPCMBuffer format
+        // 3. Extract raw PCM data as Data
+        // 4. Yield the audio data through the continuation
+        //
+        // Current implementation is a placeholder that signals audio was received
+        // but doesn't provide usable audio data. This needs to be implemented
+        // for actual audio processing and transcription to work.
         Task { @MainActor in
-            // For now, just signal that audio was received
-            // Real implementation would extract PCM data
             if let continuation = self.continuation {
                 continuation.yield(Data())
             }
