@@ -170,10 +170,14 @@ class MeetingSessionController {
                     let newInsights = await intelligenceEngine.analyzeTranscript(recentSegments)
                     logInfo("✨ Generated \(newInsights.count) new insights")
                     
-                    // Update UI
+                    // Update UI on MainActor
                     let allInsights = await intelligenceEngine.getAllInsights()
                     logInfo("📊 Total insights: \(allInsights.count), showing last 10")
-                    self.insights = Array(allInsights.suffix(10)) // Show last 10 insights
+                    
+                    await MainActor.run {
+                        self.insights = Array(allInsights.suffix(10)) // Show last 10 insights
+                        logSuccess("✅ Updated insights array on MainActor")
+                    }
                     
                     if !newInsights.isEmpty {
                         logSuccess("✅ Updated UI with insights")

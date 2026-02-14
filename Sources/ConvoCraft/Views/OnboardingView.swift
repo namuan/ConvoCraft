@@ -109,6 +109,7 @@ struct OnboardingView: View {
             }
         }
         .padding(40)
+        .padding(.bottom, 20)
         .frame(width: 600, height: 700)
         .task {
             await checkPermissions()
