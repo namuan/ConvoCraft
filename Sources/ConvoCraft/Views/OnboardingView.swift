@@ -12,6 +12,7 @@ struct OnboardingView: View {
     @State private var speechAuthStatus: SFSpeechRecognizerAuthorizationStatus = .notDetermined
     @State private var microphoneGranted = false
     @State private var screenRecordingGranted = false
+    @State private var siriDictationEnabled = false
     @State private var isCheckingPermissions = false
     
     var body: some View {
@@ -48,6 +49,14 @@ struct OnboardingView: View {
                     description: "Required to capture meeting audio",
                     status: microphoneGranted,
                     action: requestMicrophone
+                )
+                
+                PermissionRow(
+                    icon: "speaker.wave.2.fill",
+                    title: "Siri & Dictation",
+                    description: "Must be enabled in System Settings",
+                    status: siriDictationEnabled,
+                    action: openSiriDictationSettings
                 )
                 
                 PermissionRow(
@@ -107,28 +116,45 @@ struct OnboardingView: View {
     }
     
     private var allPermissionsGranted: Bool {
-        speechAuthStatus == .authorized && microphoneGranted && screenRecordingGranted
+        speechAuthStatus == .authorized && microphoneGranted && siriDictationEnabled && screenRecordingGranted
     }
     
     private func checkPermissions() async {
+        logInfo("🔍 OnboardingView: Checking permissions...")
         isCheckingPermissions = true
         
         // Check speech recognition (don't request, just check status)
         await MainActor.run {
             speechAuthStatus = SFSpeechRecognizer.authorizationStatus()
+            logInfo("Speech recognition status: \(speechAuthStatus.rawValue)")
         }
         
         // Check microphone (check current authorization status without requesting)
         let micStatus = AVCaptureDevice.authorizationStatus(for: .audio)
         await MainActor.run {
             microphoneGranted = micStatus == .authorized
+            logInfo("Microphone status: \(micStatus.rawValue), granted=\(microphoneGranted)")
+        }
+        
+        // Check Siri & Dictation
+        let siriStatus = await checkSiriDictationEnabled()
+        await MainActor.run {
+            siriDictationEnabled = siriStatus
+            logInfo("Siri & Dictation enabled: \(siriStatus)")
         }
         
         // Check screen recording (ScreenCaptureKit permission)
         let screenStatus = await checkScreenRecordingPermission()
         await MainActor.run {
             screenRecordingGranted = screenStatus
+            logInfo("Screen recording granted: \(screenStatus)")
             isCheckingPermissions = false
+        }
+        
+        if speechAuthStatus == .authorized && microphoneGranted && siriDictationEnabled && screenRecordingGranted {
+            logSuccess("✅ All permissions already granted!")
+        } else {
+            logWarning("⚠️ Some permissions missing")
         }
     }
     
@@ -143,11 +169,13 @@ struct OnboardingView: View {
             // Request permissions in sequence to avoid overwhelming the user
             await requestSpeechRecognition()
             await requestMicrophone()
+            await openSiriDictationSettings()
             await requestScreenRecording()
         }
     }
     
     private func requestSpeechRecognition() async {
+        logInfo("🎬 Requesting Speech Recognition permission...")
         await MainActor.run {
             isCheckingPermissions = true
         }
@@ -161,11 +189,18 @@ struct OnboardingView: View {
         
         await MainActor.run {
             speechAuthStatus = newStatus
+            logInfo("Speech Recognition result: \(newStatus.rawValue)")
+            if newStatus == .authorized {
+                logSuccess("✅ Speech Recognition authorized!")
+            } else {
+                logError("❌ Speech Recognition denied or restricted")
+            }
             isCheckingPermissions = false
         }
     }
     
     private func requestMicrophone() async {
+        logInfo("🎤 Requesting Microphone permission...")
         await MainActor.run {
             isCheckingPermissions = true
         }
@@ -175,11 +210,18 @@ struct OnboardingView: View {
         
         await MainActor.run {
             microphoneGranted = granted
+            logInfo("Microphone result: \(granted)")
+            if granted {
+                logSuccess("✅ Microphone authorized!")
+            } else {
+                logError("❌ Microphone denied")
+            }
             isCheckingPermissions = false
         }
     }
     
     private func requestScreenRecording() async {
+        logInfo("📺 Requesting Screen Recording permission...")
         await MainActor.run {
             isCheckingPermissions = true
         }
@@ -219,6 +261,48 @@ struct OnboardingView: View {
             isCheckingPermissions = false
         }
         #endif
+    }
+    
+    private func checkSiriDictationEnabled() async -> Bool {
+        // Check if speech recognizer is available (indicates Siri & Dictation is enabled)
+        guard let recognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-US")) else {
+            return false
+        }
+        return recognizer.isAvailable
+    }
+    
+    private func openSiriDictationSettings() async {
+        logInfo("📢 Opening Siri & Dictation settings...")
+        
+        // Check current status
+        let isEnabled = await checkSiriDictationEnabled()
+        
+        await MainActor.run {
+            siriDictationEnabled = isEnabled
+            
+            if !isEnabled {
+                let alert = NSAlert()
+                alert.messageText = "Siri & Dictation Required"
+                alert.informativeText = "ConvoCraft requires Siri & Dictation to be enabled for speech recognition to work.\n\nPlease enable 'Dictation' in System Settings > Siri & Spotlight, then click 'Check Again' to verify."
+                alert.alertStyle = .informational
+                alert.addButton(withTitle: "Open System Settings")
+                alert.addButton(withTitle: "Check Again")
+                alert.addButton(withTitle: "Later")
+                
+                let response = alert.runModal()
+                if response == .alertFirstButtonReturn {
+                    // Open System Settings
+                    NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Siri-Settings.extension")!)
+                } else if response == .alertSecondButtonReturn {
+                    // Recheck status
+                    Task {
+                        await checkPermissions()
+                    }
+                }
+            } else {
+                logSuccess("✅ Siri & Dictation is already enabled")
+            }
+        }
     }
     
     private func checkScreenRecordingPermission() async -> Bool {

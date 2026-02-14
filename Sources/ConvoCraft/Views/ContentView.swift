@@ -40,6 +40,15 @@ struct MeetingView: View {
                 
                 Spacer()
                 
+                // Logs button
+                Button(action: {
+                    Logger.shared.openLogDirectory()
+                }) {
+                    Label("View Logs", systemImage: "doc.text.magnifyingglass")
+                }
+                .buttonStyle(.bordered)
+                .help("Open log files directory")
+                
                 if let error = controller.errorMessage {
                     Text(error)
                         .foregroundColor(.red)

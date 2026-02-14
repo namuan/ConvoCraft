@@ -15,7 +15,13 @@ ConvoCraft now includes a comprehensive onboarding flow that requests and verifi
 - **How it's used**: Records your voice and meeting participants
 - **macOS Setting**: System Settings > Privacy & Security > Microphone
 
-### 3. **Screen Recording** 📺
+### 3. **Siri & Dictation** 🔊
+- **Purpose**: Provides the underlying speech recognition engine
+- **How it's used**: Powers the transcription service
+- **macOS Setting**: System Settings > Siri & Spotlight > Enable "Dictation"
+- **Note**: This MUST be enabled for speech recognition to work
+
+### 4. **Screen Recording** 📺
 - **Purpose**: Allows capturing system audio (required by ScreenCaptureKit)
 - **How it's used**: Records audio from video conferencing apps like Zoom, Teams, etc.
 - **macOS Setting**: System Settings > Privacy & Security > Screen Recording
@@ -37,9 +43,16 @@ When you first launch ConvoCraft, you'll see an onboarding screen that:
 2. macOS will show permission dialogs for:
    - Speech Recognition (approve immediately)
    - Microphone (approve immediately)
+   - Siri & Dictation (requires System Settings - see below)
    - Screen Recording (requires System Settings)
 
-3. For Screen Recording:
+3. For Siri & Dictation:
+   - Click "Open System Settings" when prompted
+   - Go to **Siri & Spotlight**
+   - Enable **"Dictation"**
+   - Click "Check Again" in ConvoCraft to verify
+
+4. For Screen Recording:
    - If the first attempt fails, you'll see an alert
    - Click "Open System Settings" to go directly to the right panel
    - Enable "ConvoCraft" in the Screen Recording list
@@ -55,6 +68,15 @@ defaults delete com.convocraft.app onboardingComplete
 Then restart the app.
 
 ## Troubleshooting
+
+### "Siri and Dictation are disabled" Error
+This is a critical requirement. To fix:
+
+1. Open **System Settings**
+2. Navigate to **Siri & Spotlight** (or **Siri & Dictation** on older macOS)
+3. Enable **"Dictation"** toggle
+4. **Restart ConvoCraft**
+5. All other permissions must also be granted
 
 ### "Screen Recording Permission Required" Error
 This is the most common issue. To fix:
@@ -86,7 +108,13 @@ You can verify permissions are granted by checking:
 
 ## Why These Permissions?
 
-**Speech Recognition + Microphone** are straightforward - they enable audio capture and transcription.
+**Speech Recognition + Microphone** enable audio capture and transcription.
+
+**Siri & Dictation** is the underlying macOS service that powers speech recognition:
+- Required by the Speech Recognition framework
+- Must be enabled in System Settings
+- Without it, speech recognition will fail with "Siri and Dictation are disabled"
+- No audio will be transcribed even if other permissions are granted
 
 **Screen Recording** permission might seem odd for an audio app, but:
 - macOS requires this permission for ScreenCaptureKit
@@ -124,6 +152,7 @@ Each message directs you to the specific System Settings panel.
 3. ❌ Empty permission check in AudioCaptureManager
 4. ❌ No screen recording permission verification
 5. ❌ Poor error messages
+6. ❌ No Siri & Dictation check (causing silent failures)
 
 ### Current Implementation
 1. ✅ Dedicated onboarding screen on first launch
@@ -133,6 +162,7 @@ Each message directs you to the specific System Settings panel.
 5. ✅ Helpful error messages with guidance
 6. ✅ Runtime verification before starting meetings
 7. ✅ Direct links to System Settings
+8. ✅ Siri & Dictation status verification with guidance
 
 ## Next Steps
 

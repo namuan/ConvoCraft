@@ -31,55 +31,86 @@ class MeetingSessionController {
     private var analysisTask: Task<Void, Never>?
     
     func startMeeting() async {
-        guard !isRecording else { return }
+        logInfo("🎬 startMeeting() called")
         
+        guard !isRecording else {
+            logWarning("Already recording, ignoring start request")
+            return
+        }
+        
+        logInfo("Checking all permissions...")
         // Check all permissions before starting
         let permissionsValid = await checkAllPermissions()
         if !permissionsValid {
+            logError("Permissions check failed: \(errorMessage ?? "Unknown error")")
             return
         }
+        logSuccess("All permissions granted!")
         
         sessionStartTime = Date()
         isRecording = true
         errorMessage = nil
         
+        logInfo("Clearing previous data...")
         // Clear previous data
         await transcriptStore.clear()
         await intelligenceEngine.clearInsights()
         currentTranscript = []
         partialTranscript = ""
         insights = []
+        logSuccess("Previous data cleared")
         
+        logInfo("Starting transcription flow...")
         // Start transcription
         startTranscriptionFlow()
         
+        logInfo("Starting periodic analysis...")
         // Start periodic analysis
         startPeriodicAnalysis()
+        
+        logSuccess("Meeting started successfully!")
+        Logger.shared.logSeparator()
     }
     
     func stopMeeting() async {
-        guard isRecording else { return }
+        logInfo("🛑 stopMeeting() called")
         
+        guard isRecording else {
+            logWarning("Not recording, ignoring stop request")
+            return
+        }
+        
+        logInfo("Stopping all tasks...")
         // Stop all tasks
         captureTask?.cancel()
         transcriptionTask?.cancel()
         analysisTask?.cancel()
         
+        logInfo("Stopping speech transcriber...")
         speechTranscriber.stopTranscription()
+        
+        logInfo("Stopping audio capture...")
         await audioCaptureManager.stopCapture()
         
         isRecording = false
+        logSuccess("Meeting stopped")
         
+        logInfo("Generating final summary...")
         // Generate final summary
         await generateFinalSummary()
+        Logger.shared.logSeparator()
     }
     
     private func startTranscriptionFlow() {
+        logInfo("📝 Starting transcription flow...")
         transcriptionTask = Task {
             do {
+                logInfo("Requesting transcription stream from SpeechTranscriber...")
                 let stream = try await speechTranscriber.startTranscription()
+                logSuccess("Transcription stream obtained, listening for results...")
                 
                 for await (text, isFinal) in stream {
+                    logDebug("Received transcription: isFinal=\(isFinal), text=\(text.prefix(50))...")
                     guard !Task.isCancelled else { break }
                     
                     let timestamp = Date().timeIntervalSince1970
@@ -90,16 +121,21 @@ class MeetingSessionController {
                     )
                     
                     if isFinal {
+                        logInfo("Final transcript segment received")
                         await transcriptStore.addFinalSegment(segment)
                         await updateCurrentTranscript()
                         partialTranscript = ""
                     } else {
+                        logDebug("Partial transcript segment received")
                         await transcriptStore.addPartialSegment(segment)
                         partialTranscript = text
                     }
                 }
+                logWarning("Transcription stream ended")
             } catch {
-                errorMessage = "Transcription error: \(error.localizedDescription)"
+                let errorMsg = "Transcription error: \(error.localizedDescription)"
+                logError(errorMsg)
+                errorMessage = errorMsg
             }
         }
     }
@@ -132,16 +168,22 @@ class MeetingSessionController {
     }
     
     private func checkAllPermissions() async -> Bool {
+        logInfo("🔐 Checking all permissions...")
+        
         // Check speech recognition
+        logDebug("Requesting speech recognition authorization...")
         let speechAuth = await speechTranscriber.requestAuthorization()
         speechTranscriber.updateAuthorizationStatus(speechAuth)
+        logInfo("Speech recognition status: \(speechAuth.rawValue)")
         if speechAuth != .authorized {
             errorMessage = "⚠️ Speech recognition permission required. Please grant permission in System Settings."
             return false
         }
         
         // Check microphone
+        logDebug("Checking microphone permission...")
         let micGranted = await speechTranscriber.requestMicrophonePermission()
+        logInfo("Microphone permission: \(micGranted ? "granted" : "denied")")
         if !micGranted {
             errorMessage = "⚠️ Microphone permission required. Please grant permission in System Settings."
             return false
@@ -150,21 +192,28 @@ class MeetingSessionController {
         // Check screen recording (for audio capture)
         #if canImport(ScreenCaptureKit)
         guard #available(macOS 12.3, *) else {
-            errorMessage = "⚠️ macOS 12.3 or later is required for audio capture."
+            let msg = "⚠️ macOS 12.3 or later is required for audio capture."
+            logError(msg)
+            errorMessage = msg
             return false
         }
         
+        logDebug("Checking screen recording permission...")
         do {
             let _ = try await SCShareableContent.excludingDesktopWindows(
                 false,
                 onScreenWindowsOnly: true
             )
+            logSuccess("Screen recording permission granted")
         } catch {
-            errorMessage = "⚠️ Screen Recording permission required. Please grant permission in System Settings > Privacy & Security > Screen Recording."
+            let msg = "⚠️ Screen Recording permission required. Please grant permission in System Settings > Privacy & Security > Screen Recording."
+            logError("Screen recording permission check failed: \(error.localizedDescription)")
+            errorMessage = msg
             return false
         }
         #endif
         
+        logSuccess("All permissions validated!")
         return true
     }
     
