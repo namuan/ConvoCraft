@@ -34,85 +34,109 @@ actor IntelligenceEngine {
     private func performNLPAnalysis(_ text: String) async -> [IntelligenceInsight] {
         logDebug("🔍 performNLPAnalysis: analyzing text...")
         var detectedInsights: [IntelligenceInsight] = []
-        let lowercased = text.lowercased()
         
-        // Detect uncertainty phrases
-        let uncertaintyPhrases = ["maybe", "not sure", "perhaps", "might", "could be"]
-        for phrase in uncertaintyPhrases {
-            if lowercased.contains(phrase) {
-                logInfo("🔍 Detected uncertainty phrase: \(phrase)")
-                detectedInsights.append(IntelligenceInsight(
-                    type: .question,
-                    content: "Clarify uncertainty: '\(phrase)' detected. Ask for confirmation."
-                ))
-                break
-            }
-        }
-        
-        // Detect commitment/action phrases
-        let commitmentPhrases = ["we should", "need to", "must", "will do"]
-        for phrase in commitmentPhrases {
-            if lowercased.contains(phrase) {
-                logInfo("🛠 Detected commitment phrase: \(phrase)")
-                detectedInsights.append(IntelligenceInsight(
-                    type: .idea,
-                    content: "Action commitment detected. Consider adding to action items."
-                ))
-                break
-            }
-        }
-        
-        // Detect risk signals
-        let riskPhrases = ["risk", "problem", "issue", "concern", "blocker", "challenge"]
-        for phrase in riskPhrases {
-            if lowercased.contains(phrase) {
-                logWarning("⚠️ Detected risk phrase: \(phrase)")
-                detectedInsights.append(IntelligenceInsight(
-                    type: .risk,
-                    content: "Risk signal: '\(phrase)' mentioned. Monitor for mitigation plans."
-                ))
-                break
-            }
-        }
-        
-        // Detect timeline/deadline mentions
-        let timelinePhrases = ["deadline", "due date", "timeline", "schedule", "by next week"]
-        for phrase in timelinePhrases {
-            if lowercased.contains(phrase) {
-                logInfo("📅 Detected timeline phrase: \(phrase)")
-                detectedInsights.append(IntelligenceInsight(
-                    type: .question,
-                    content: "Timeline mentioned. Clarify specific dates and dependencies."
-                ))
-                break
-            }
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            logWarning("⚠️ Empty text, skipping analysis")
+            return []
         }
         
         #if canImport(NaturalLanguage)
-        // Extract named entities (only on macOS)
-        logDebug("🏷 Extracting named entities...")
         tagger.string = text
         let range = text.startIndex..<text.endIndex
-        var entityCount = 0
+        
+        // 1. Extract named entities (people, organizations)
+        logDebug("🏷 Extracting named entities...")
+        var entities: Set<String> = []
         tagger.enumerateTags(in: range, unit: .word, scheme: .nameType) { tag, tokenRange in
-            if tag == .organizationName || tag == .personalName {
+            if tag == .organizationName {
                 let entity = String(text[tokenRange])
-                entityCount += 1
-                logInfo("🏷 Found entity: \(entity) (type: \(tag?.rawValue ?? "unknown"))")
-                detectedInsights.append(IntelligenceInsight(
-                    type: .idea,
-                    content: "Key entity mentioned: \(entity). Track involvement."
-                ))
+                entities.insert(entity)
+                logInfo("🏢 Found organization: \(entity)")
+            } else if tag == .personalName {
+                let entity = String(text[tokenRange])
+                entities.insert(entity)
+                logInfo("👤 Found person: \(entity)")
+            } else if tag == .placeName {
+                let entity = String(text[tokenRange])
+                entities.insert(entity)
+                logInfo("📍 Found place: \(entity)")
             }
             return true
         }
-        logDebug("🏷 Total entities found: \(entityCount)")
+        
+        // Generate insights from entities
+        for entity in entities.prefix(2) {
+            detectedInsights.append(IntelligenceInsight(
+                type: .idea,
+                content: "Discussion involving: \(entity)"
+            ))
+        }
+        
+        // 2. Extract key lexical classes (nouns, verbs)
+        logDebug("📝 Extracting key topics...")
+        var nouns: [String] = []
+        var verbs: [String] = []
+        
+        tagger.enumerateTags(in: range, unit: .word, scheme: .lexicalClass) { tag, tokenRange in
+            let word = String(text[tokenRange]).trimmingCharacters(in: .punctuationCharacters)
+            
+            if tag == .noun && word.count > 4 {
+                nouns.append(word)
+            } else if tag == .verb && word.count > 3 {
+                verbs.append(word)
+            }
+            return true
+        }
+        
+        // Get most common nouns as topics
+        let topicCounts = Dictionary(grouping: nouns, by: { $0.lowercased() })
+            .mapValues { $0.count }
+            .sorted { $0.value > $1.value }
+        
+        if let topTopic = topicCounts.first, topTopic.value >= 2 {
+            logInfo("📌 Key topic: \(topTopic.key) (mentioned \(topTopic.value) times)")
+            detectedInsights.append(IntelligenceInsight(
+                type: .idea,
+                content: "Key topic: \(topTopic.key)"
+            ))
+        }
+        
+        // 3. Analyze sentences for questions and statements
+        logDebug("❓ Analyzing sentence structure...")
+        let sentences = text.components(separatedBy: CharacterSet(charactersIn: ".?!"))
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        
+        let questions = sentences.filter { $0.last == "?" || $0.lowercased().hasPrefix("what") || 
+                                           $0.lowercased().hasPrefix("how") || $0.lowercased().hasPrefix("why") }
+        
+        if !questions.isEmpty {
+            logInfo("❓ Found \(questions.count) question(s)")
+            if let firstQuestion = questions.first {
+                let preview = String(firstQuestion.prefix(60))
+                detectedInsights.append(IntelligenceInsight(
+                    type: .question,
+                    content: "Question raised: \(preview)\(firstQuestion.count > 60 ? "..." : "")"
+                ))
+            }
+        }
+        
+        // 4. Generate general insight about conversation length/depth
+        if sentences.count >= 3 {
+            let wordCount = text.components(separatedBy: .whitespacesAndNewlines).count
+            logInfo("📊 Conversation stats: \(sentences.count) sentences, ~\(wordCount) words")
+            detectedInsights.append(IntelligenceInsight(
+                type: .idea,
+                content: "Active discussion in progress (\(sentences.count) points made)"
+            ))
+        }
+        
         #endif
         
         logInfo("📊 Total insights before limiting: \(detectedInsights.count)")
         let limitedInsights = Array(detectedInsights.prefix(3))
         logInfo("✅ Returning \(limitedInsights.count) insights (limit: 3)")
-        return limitedInsights // Limit to top 3 insights per analysis
+        return limitedInsights
     }
     
     func getAllInsights() -> [IntelligenceInsight] {
