@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+    ConvoCraft Info.plist
+    
+    This file contains required permissions and app metadata for the macOS app.
+    When building with Xcode, this file should be included in the app target.
+    
+    Note: Swift Package Manager executable targets don't use Info.plist directly.
+    To create a proper macOS app bundle, use Xcode to create an app target and
+    include this Info.plist file.
+-->
+<plist version="1.0">
+<dict>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>ConvoCraft needs microphone access to transcribe your meetings.</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>ConvoCraft uses speech recognition to transcribe meeting audio in real-time.</string>
+    <key>NSScreenCaptureDescription</key>
+    <string>ConvoCraft needs screen capture permission to record system audio from meetings.</string>
+    <key>CFBundleName</key>
+    <string>ConvoCraft</string>
+    <key>CFBundleDisplayName</key>
+    <string>ConvoCraft</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.convocraft.app</string>
+    <key>CFBundleVersion</key>
+    <string>1.0</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>14.0</string>
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.productivity</string>
+    <key>CFBundleExecutable</key>
+    <string>QuickMenu</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
+</dict>
+</plist>
