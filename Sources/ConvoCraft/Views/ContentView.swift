@@ -3,8 +3,12 @@ import SwiftUI
 struct ContentView: View {
     @State private var controller = MeetingSessionController()
     @State private var selectedTab = 0
+    @AppStorage("onboardingComplete") private var onboardingComplete = false
     
     var body: some View {
+        if !onboardingComplete {
+            OnboardingView(isOnboardingComplete: $onboardingComplete)
+        } else {
         TabView(selection: $selectedTab) {
             MeetingView(controller: controller)
                 .tabItem {
@@ -19,6 +23,7 @@ struct ContentView: View {
                 .tag(1)
         }
         .frame(minWidth: 800, minHeight: 600)
+        }
     }
 }
 

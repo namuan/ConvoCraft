@@ -1,6 +1,10 @@
 import Foundation
 import Observation
 
+#if canImport(ScreenCaptureKit)
+import ScreenCaptureKit
+#endif
+
 @MainActor
 @Observable
 class MeetingSessionController {
@@ -29,18 +33,9 @@ class MeetingSessionController {
     func startMeeting() async {
         guard !isRecording else { return }
         
-        // Request speech recognition authorization
-        let authStatus = await speechTranscriber.requestAuthorization()
-        speechTranscriber.updateAuthorizationStatus(authStatus)
-        guard authStatus == .authorized else {
-            errorMessage = "Speech recognition not authorized"
-            return
-        }
-        
-        // Request microphone permission
-        let micGranted = await speechTranscriber.requestMicrophonePermission()
-        guard micGranted else {
-            errorMessage = "Microphone not authorized"
+        // Check all permissions before starting
+        let permissionsValid = await checkAllPermissions()
+        if !permissionsValid {
             return
         }
         
@@ -134,6 +129,43 @@ class MeetingSessionController {
     
     private func updateCurrentTranscript() async {
         currentTranscript = await transcriptStore.getAllSegments()
+    }
+    
+    private func checkAllPermissions() async -> Bool {
+        // Check speech recognition
+        let speechAuth = await speechTranscriber.requestAuthorization()
+        speechTranscriber.updateAuthorizationStatus(speechAuth)
+        if speechAuth != .authorized {
+            errorMessage = "⚠️ Speech recognition permission required. Please grant permission in System Settings."
+            return false
+        }
+        
+        // Check microphone
+        let micGranted = await speechTranscriber.requestMicrophonePermission()
+        if !micGranted {
+            errorMessage = "⚠️ Microphone permission required. Please grant permission in System Settings."
+            return false
+        }
+        
+        // Check screen recording (for audio capture)
+        #if canImport(ScreenCaptureKit)
+        guard #available(macOS 12.3, *) else {
+            errorMessage = "⚠️ macOS 12.3 or later is required for audio capture."
+            return false
+        }
+        
+        do {
+            let _ = try await SCShareableContent.excludingDesktopWindows(
+                false,
+                onScreenWindowsOnly: true
+            )
+        } catch {
+            errorMessage = "⚠️ Screen Recording permission required. Please grant permission in System Settings > Privacy & Security > Screen Recording."
+            return false
+        }
+        #endif
+        
+        return true
     }
     
     private func generateFinalSummary() async {

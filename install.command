@@ -31,10 +31,13 @@ echo "📦 Build directory: $BUILD_DIR"
 echo "🎯 Install directory: $INSTALL_DIR"
 echo ""
 
-# Reset permissions for fresh install
-echo "🔄 Resetting permissions..."
+# Reset permissions and app state for fresh install
+echo "🔄 Resetting permissions and app state..."
 tccutil reset All com.convocraft.app 2>/dev/null || true
-echo "✅ Permissions reset!"
+# Reset onboarding flag
+defaults delete com.convocraft.app onboardingComplete 2>/dev/null || true
+defaults delete com.convocraft.app 2>/dev/null || true
+echo "✅ Permissions and app state reset!"
 echo ""
 
 # Clean previous build

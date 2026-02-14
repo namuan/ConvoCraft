@@ -57,6 +57,17 @@ class AudioCaptureManager: NSObject, ObservableObject {
     #if canImport(ScreenCaptureKit)
     @available(macOS 12.3, *)
     private func requestPermission() async throws {
+        // Check if we have screen recording permission by attempting to get shareable content
+        do {
+            let _ = try await SCShareableContent.excludingDesktopWindows(
+                false,
+                onScreenWindowsOnly: true
+            )
+            // If we get here, permission is granted
+        } catch {
+            // Permission denied or not granted yet
+            throw CaptureError.permissionDenied
+        }
     }
     
     @available(macOS 12.3, *)
