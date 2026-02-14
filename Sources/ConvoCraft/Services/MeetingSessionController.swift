@@ -141,23 +141,45 @@ class MeetingSessionController {
     }
     
     private func startPeriodicAnalysis() {
+        logInfo("📊 Starting periodic analysis task...")
         analysisTask = Task {
+            var analysisCount = 0
             while !Task.isCancelled {
                 // Wait 10 seconds between analyses
                 try? await Task.sleep(for: .seconds(10))
                 
-                guard !Task.isCancelled else { break }
+                guard !Task.isCancelled else {
+                    logInfo("🚫 Periodic analysis cancelled")
+                    break
+                }
+                
+                analysisCount += 1
+                logDebug("🔄 Periodic analysis cycle #\(analysisCount)")
                 
                 // Get recent transcript
                 let recentSegments = await transcriptStore.getRecentTranscript(lastMinutes: 2.0)
+                logInfo("📝 Got \(recentSegments.count) recent transcript segments (last 2 minutes)")
                 
                 if !recentSegments.isEmpty {
+                    // Log segment content
+                    let sampleText = recentSegments.first?.text ?? ""
+                    logDebug("📤 Sample text: \(sampleText.prefix(50))...")
+                    
                     // Analyze and get insights
-                    let _ = await intelligenceEngine.analyzeTranscript(recentSegments)
+                    logDebug("🧠 Calling IntelligenceEngine.analyzeTranscript...")
+                    let newInsights = await intelligenceEngine.analyzeTranscript(recentSegments)
+                    logInfo("✨ Generated \(newInsights.count) new insights")
                     
                     // Update UI
                     let allInsights = await intelligenceEngine.getAllInsights()
+                    logInfo("📊 Total insights: \(allInsights.count), showing last 10")
                     self.insights = Array(allInsights.suffix(10)) // Show last 10 insights
+                    
+                    if !newInsights.isEmpty {
+                        logSuccess("✅ Updated UI with insights")
+                    }
+                } else {
+                    logWarning("⚠️ No recent segments to analyze")
                 }
             }
         }
