@@ -55,4 +55,24 @@ actor PersistenceLayer {
     func getSummariesDirectory() -> URL {
         return summariesDirectory
     }
+    
+    func deleteSummary(_ summary: MeetingSummary) async throws {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
+        let filename = "meeting_\(formatter.string(from: summary.date)).json"
+        
+        let fileURL = summariesDirectory.appendingPathComponent(filename)
+        try fileManager.removeItem(at: fileURL)
+    }
+    
+    func deleteSummaries(_ summaries: [MeetingSummary]) async throws {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
+        
+        for summary in summaries {
+            let filename = "meeting_\(formatter.string(from: summary.date)).json"
+            let fileURL = summariesDirectory.appendingPathComponent(filename)
+            try fileManager.removeItem(at: fileURL)
+        }
+    }
 }

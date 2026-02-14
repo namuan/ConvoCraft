@@ -244,22 +244,120 @@ struct SummaryListView: View {
     @Bindable var controller: MeetingSessionController
     @State private var summaries: [MeetingSummary] = []
     @State private var selectedSummary: MeetingSummary?
+    @State private var summaryToDelete: MeetingSummary?
+    @State private var showDeleteConfirmation = false
+    @State private var selectedSummaries: Set<MeetingSummary.ID> = []
+    @State private var isSelectMode = false
+    @State private var showBulkDeleteConfirmation = false
     
     var body: some View {
         NavigationSplitView {
-            List(summaries, id: \.date, selection: $selectedSummary) { summary in
-                VStack(alignment: .leading) {
-                    Text(summary.title)
-                        .font(.headline)
-                    Text(formatDate(summary.date))
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+            List {
+                ForEach(summaries, id: \.date) { summary in
+                    HStack {
+                        if isSelectMode {
+                            Image(systemName: selectedSummaries.contains(summary.date) ? "checkmark.circle.fill" : "circle")
+                                .foregroundColor(selectedSummaries.contains(summary.date) ? .accentColor : .secondary)
+                                .onTapGesture {
+                                    toggleSelection(summary)
+                                }
+                        }
+                        
+                        VStack(alignment: .leading) {
+                            Text(summary.title)
+                                .font(.headline)
+                            Text(formatDate(summary.date))
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            if isSelectMode {
+                                toggleSelection(summary)
+                            } else {
+                                selectedSummary = summary
+                            }
+                        }
+                    }
+                    .contextMenu {
+                        if !isSelectMode {
+                            Button(role: .destructive) {
+                                summaryToDelete = summary
+                                showDeleteConfirmation = true
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+                        }
+                    }
                 }
-                .tag(summary)
             }
             .navigationTitle("Meeting Summaries")
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    if isSelectMode {
+                        HStack {
+                            Button("Select All") {
+                                selectAll()
+                            }
+                            .disabled(selectedSummaries.count == summaries.count)
+                            
+                            Button("Delete Selected") {
+                                showBulkDeleteConfirmation = true
+                            }
+                            .disabled(selectedSummaries.isEmpty)
+                        }
+                    }
+                }
+                ToolbarItem(placement: .automatic) {
+                    Button(isSelectMode ? "Done" : "Select") {
+                        withAnimation {
+                            isSelectMode.toggle()
+                            if !isSelectMode {
+                                selectedSummaries.removeAll()
+                            }
+                        }
+                    }
+                    .disabled(summaries.isEmpty)
+                }
+            }
             .task {
                 summaries = await controller.loadPreviousSummaries()
+            }
+            .alert("Delete Meeting Summary?", isPresented: $showDeleteConfirmation) {
+                Button("Cancel", role: .cancel) {
+                    summaryToDelete = nil
+                }
+                Button("Delete", role: .destructive) {
+                    if let summary = summaryToDelete {
+                        Task {
+                            try? await controller.deleteSummary(summary)
+                            summaries.removeAll { $0.date == summary.date }
+                            if selectedSummary?.date == summary.date {
+                                selectedSummary = nil
+                            }
+                            summaryToDelete = nil
+                        }
+                    }
+                }
+            } message: {
+                Text("This will permanently delete this meeting summary and cannot be undone.")
+            }
+            .alert("Delete \(selectedSummaries.count) Summaries?", isPresented: $showBulkDeleteConfirmation) {
+                Button("Cancel", role: .cancel) {}
+                Button("Delete All", role: .destructive) {
+                    let summariesToDelete = summaries.filter { selectedSummaries.contains($0.date) }
+                    Task {
+                        try? await controller.deleteSummaries(summariesToDelete)
+                        summaries.removeAll { selectedSummaries.contains($0.date) }
+                        if let selected = selectedSummary, selectedSummaries.contains(selected.date) {
+                            selectedSummary = nil
+                        }
+                        selectedSummaries.removeAll()
+                        isSelectMode = false
+                    }
+                }
+            } message: {
+                Text("This will permanently delete \(selectedSummaries.count) meeting summaries and cannot be undone.")
             }
         } detail: {
             if let summary = selectedSummary {
@@ -276,6 +374,18 @@ struct SummaryListView: View {
         formatter.dateStyle = .medium
         formatter.timeStyle = .short
         return formatter.string(from: date)
+    }
+    
+    private func toggleSelection(_ summary: MeetingSummary) {
+        if selectedSummaries.contains(summary.date) {
+            selectedSummaries.remove(summary.date)
+        } else {
+            selectedSummaries.insert(summary.date)
+        }
+    }
+    
+    private func selectAll() {
+        selectedSummaries = Set(summaries.map { $0.date })
     }
 }
 
@@ -313,6 +423,38 @@ struct SummaryDetailView: View {
                         ForEach(summary.insights) { insight in
                             InsightCardView(insight: insight)
                         }
+                    }
+                }
+                
+                if !summary.transcript.isEmpty {
+                    Divider()
+                    
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Full Transcript")
+                            .font(.headline)
+                        
+                        VStack(alignment: .leading, spacing: 12) {
+                            ForEach(summary.transcript) { segment in
+                                TranscriptSegmentView(segment: segment)
+                            }
+                        }
+                        .padding()
+                        .background(Color(NSColor.textBackgroundColor))
+                        .cornerRadius(8)
+                    }
+                } else {
+                    Divider()
+                    
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Transcript")
+                            .font(.headline)
+                        
+                        Text("No audio was captured during this meeting. Make sure:\n• Screen Recording permission is granted in System Settings\n• System audio is playing during the recording (e.g., from meetings, calls, or your browser)")
+                            .foregroundColor(.secondary)
+                            .padding()
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color(NSColor.textBackgroundColor))
+                            .cornerRadius(8)
                     }
                 }
             }

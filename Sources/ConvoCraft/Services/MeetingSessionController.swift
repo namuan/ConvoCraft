@@ -95,6 +95,19 @@ class MeetingSessionController {
         isRecording = false
         logSuccess("Meeting stopped")
         
+        // Finalize any partial transcript before generating summary
+        logInfo("Finalizing partial transcripts...")
+        await transcriptStore.finalizeCurrent()
+        
+        // Log final state with detailed segment info
+        let finalSegments = await transcriptStore.getAllSegments()
+        logInfo("📊 Final transcript has \(finalSegments.count) segments before summary generation")
+        if !finalSegments.isEmpty {
+            for (index, seg) in finalSegments.enumerated() {
+                logDebug("  Segment #\(index + 1): \(seg.text.prefix(60))... [\(seg.text.count) chars]")
+            }
+        }
+        
         logInfo("Generating final summary...")
         // Generate final summary
         await generateFinalSummary()
@@ -102,16 +115,21 @@ class MeetingSessionController {
     }
     
     private func startTranscriptionFlow() {
-        logInfo("📝 Starting transcription flow...")
+        logInfo("📝 Starting transcription flow with system audio capture...")
         transcriptionTask = Task {
             do {
-                logInfo("Requesting transcription stream from SpeechTranscriber...")
-                let stream = try await speechTranscriber.startTranscription()
+                logInfo("Starting audio capture from system...")
+                let audioStream = try await audioCaptureManager.startCapture()
+                logSuccess("Audio capture stream obtained")
+                
+                logInfo("Requesting transcription with captured audio stream...")
+                let transcriptStream = try await speechTranscriber.startTranscription(with: audioStream)
                 logSuccess("Transcription stream obtained, listening for results...")
                 
-                for await (text, isFinal) in stream {
-                    logDebug("Received transcription: isFinal=\(isFinal), text=\(text.prefix(50))...")
+                for await (text, isFinal) in transcriptStream {
                     guard !Task.isCancelled else { break }
+                    
+                    logDebug("📥 Received: isFinal=\(isFinal), length=\(text.count), text=\(text.prefix(100))...")
                     
                     let timestamp = Date().timeIntervalSince1970
                     let segment = TranscriptSegment(
@@ -121,12 +139,17 @@ class MeetingSessionController {
                     )
                     
                     if isFinal {
-                        logInfo("Final transcript segment received")
+                        logInfo("✅ FINAL segment received, adding to store")
                         await transcriptStore.addFinalSegment(segment)
+                        
+                        // Verify it was added and show total
+                        let allSegs = await transcriptStore.getAllSegments()
+                        logInfo("📊 Store now has \(allSegs.count) segments, total chars: \(allSegs.reduce(0) { $0 + $1.text.count })")
+                        
                         await updateCurrentTranscript()
                         partialTranscript = ""
                     } else {
-                        logDebug("Partial transcript segment received")
+                        logDebug("⏳ Partial segment, updating UI")
                         await transcriptStore.addPartialSegment(segment)
                         partialTranscript = text
                     }
@@ -155,6 +178,13 @@ class MeetingSessionController {
                 
                 analysisCount += 1
                 logDebug("🔄 Periodic analysis cycle #\(analysisCount)")
+                
+                // Finalize any accumulated partial segment periodically
+                let partialCount = await transcriptStore.getPartialSegment() != nil ? 1 : 0
+                if partialCount > 0 {
+                    logInfo("⏱ Finalizing partial segment (periodic)")
+                    await transcriptStore.finalizeCurrent()
+                }
                 
                 // Get recent transcript
                 let recentSegments = await transcriptStore.getRecentTranscript(lastMinutes: 2.0)
@@ -244,11 +274,26 @@ class MeetingSessionController {
     }
     
     private func generateFinalSummary() async {
-        guard let startTime = sessionStartTime else { return }
+        guard let startTime = sessionStartTime else {
+            logWarning("No start time for session")
+            return
+        }
         
         let duration = Date().timeIntervalSince(startTime)
         let allSegments = await transcriptStore.getAllSegments()
         let allInsights = await intelligenceEngine.getAllInsights()
+        
+        logInfo("📊 Generating final summary...")
+        logInfo("   Duration: \(Int(duration))s")
+        logInfo("   Segments: \(allSegments.count)")
+        logInfo("   Insights: \(allInsights.count)")
+        
+        if allSegments.isEmpty {
+            logWarning("⚠️ No transcript segments were captured during this meeting!")
+        } else {
+            let totalChars = allSegments.reduce(0) { $0 + $1.text.count }
+            logInfo("   Total transcript chars: \(totalChars)")
+        }
         
         let summary = await summaryEngine.generateSummary(
             from: allSegments,
@@ -256,12 +301,17 @@ class MeetingSessionController {
             duration: duration
         )
         
+        logInfo("📝 Summary generated with \(summary.transcript.count) segments")
+        
         // Save summary
         do {
             try await persistenceLayer.saveSummary(summary)
             lastSummary = summary
+            logSuccess("✅ Summary saved successfully")
         } catch {
-            errorMessage = "Failed to save summary: \(error.localizedDescription)"
+            let errorMsg = "Failed to save summary: \(error.localizedDescription)"
+            logError(errorMsg)
+            errorMessage = errorMsg
         }
     }
     
@@ -272,5 +322,13 @@ class MeetingSessionController {
             errorMessage = "Failed to load summaries: \(error.localizedDescription)"
             return []
         }
+    }
+    
+    func deleteSummary(_ summary: MeetingSummary) async throws {
+        try await persistenceLayer.deleteSummary(summary)
+    }
+    
+    func deleteSummaries(_ summaries: [MeetingSummary]) async throws {
+        try await persistenceLayer.deleteSummaries(summaries)
     }
 }

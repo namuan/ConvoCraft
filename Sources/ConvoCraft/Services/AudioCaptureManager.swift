@@ -1,5 +1,6 @@
 import Foundation
 import AVFoundation
+import CoreMedia
 
 #if canImport(ScreenCaptureKit)
 import ScreenCaptureKit
@@ -62,6 +63,14 @@ class AudioCaptureManager: NSObject, ObservableObject {
         }
         
         if let stream = stream as? SCStream {
+            logDebug("Removing stream output...")
+            do {
+                try stream.removeStreamOutput(self, type: .audio)
+                logSuccess("Stream output removed")
+            } catch {
+                logWarning("Failed to remove stream output: \(error.localizedDescription)")
+            }
+            
             logDebug("Stopping SCStream...")
             try? await stream.stopCapture()
             logSuccess("SCStream stopped")
@@ -119,15 +128,30 @@ class AudioCaptureManager: NSObject, ObservableObject {
             logInfo("⚠️ Microphone capture not available (requires macOS 15.0+)")
         }
         
-        // Create filter (empty for system-wide audio)
+        // Create filter - need to specify at least one display for audio capture
         logDebug("Creating SCContentFilter...")
-        let filter = SCContentFilter()
-        logDebug("Filter created (empty for system-wide audio)")
+        guard let display = content.displays.first else {
+            logError("No displays found")
+            throw CaptureError.captureNotAvailable
+        }
+        logInfo("📺 Using display: \(display.displayID) for audio capture")
+        let filter = SCContentFilter(display: display, excludingApplications: [], exceptingWindows: [])
+        logDebug("Filter created with display for system-wide audio")
         
         // Create stream
         logDebug("Creating SCStream...")
         let captureStream = SCStream(filter: filter, configuration: config, delegate: self)
         logSuccess("SCStream created")
+        
+        // Add output handler to receive audio samples
+        do {
+            logDebug("Adding stream output handler...")
+            try captureStream.addStreamOutput(self, type: .audio, sampleHandlerQueue: .global())
+            logSuccess("Stream output handler added")
+        } catch {
+            logError("Failed to add stream output: \(error.localizedDescription)")
+            throw error
+        }
         
         // Start capture
         logDebug("Starting SCStream capture...")
@@ -177,27 +201,48 @@ extension AudioCaptureManager: SCStreamOutput {
     nonisolated func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
         guard type == .audio else { return }
         
-        logDebug("🎵 Audio sample buffer received (type=audio)")
+        // Get audio format description
+        guard let formatDescription = CMSampleBufferGetFormatDescription(sampleBuffer) else {
+            logWarning("⚠️ Failed to get format description from sample buffer")
+            return
+        }
         
-        // TODO: Convert CMSampleBuffer to actual PCM audio data
-        // This requires:
-        // 1. Extract audio buffer list from CMSampleBuffer
-        // 2. Convert to AVAudioPCMBuffer format
-        // 3. Extract raw PCM data as Data
-        // 4. Yield the audio data through the continuation
-        //
-        // Current implementation is a placeholder that signals audio was received
-        // but doesn't provide usable audio data. This needs to be implemented
-        // for actual audio processing and transcription to work.
+        let audioStreamBasicDescription = CMAudioFormatDescriptionGetStreamBasicDescription(formatDescription)
         
-        logWarning("⚠️ PLACEHOLDER: Audio buffer received but not processed (yielding empty data)")
+        // Extract audio buffer from CMSampleBuffer
+        guard let blockBufferRef = CMSampleBufferGetDataBuffer(sampleBuffer) else {
+            logWarning("⚠️ Failed to get data buffer from sample buffer")
+            return
+        }
+        
+        var length = 0
+        var dataPointer: UnsafeMutablePointer<Int8>?
+        
+        let status = CMBlockBufferGetDataPointer(
+            blockBufferRef,
+            atOffset: 0,
+            lengthAtOffsetOut: nil,
+            totalLengthOut: &length,
+            dataPointerOut: &dataPointer
+        )
+        
+        guard status == kCMBlockBufferNoErr, let dataPointer = dataPointer, length > 0 else {
+            logWarning("⚠️ Failed to get data pointer from block buffer or empty data")
+            return
+        }
+        
+        // Convert to Data
+        let audioData = Data(bytes: dataPointer, count: length)
+        
+        if let streamDesc = audioStreamBasicDescription?.pointee {
+            logDebug("🎵 Audio sample: \(audioData.count) bytes, \(streamDesc.mSampleRate)Hz, \(streamDesc.mChannelsPerFrame)ch")
+        } else {
+            logDebug("🎵 Audio sample: \(audioData.count) bytes")
+        }
         
         Task { @MainActor in
             if let continuation = self.continuation {
-                continuation.yield(Data())
-                logDebug("Yielded empty audio data (placeholder)")
-            } else {
-                logWarning("No continuation available to yield audio data")
+                continuation.yield(audioData)
             }
         }
     }
