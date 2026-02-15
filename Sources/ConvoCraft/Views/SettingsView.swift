@@ -43,7 +43,7 @@ struct SettingsView: View {
                     }
                     .tag(1)
             }
-            .frame(height: 400)
+            .frame(minHeight: 450, maxHeight: .infinity)
             
             Spacer()
             
@@ -59,7 +59,7 @@ struct SettingsView: View {
             .frame(height: 20)
         }
         .padding(30)
-        .frame(width: 600, height: 500)
+        .frame(minWidth: 700, idealWidth: 800, maxWidth: .infinity, minHeight: 600, idealHeight: 700, maxHeight: .infinity)
         .task {
             await permissionsManager.checkPermissions()
         }
