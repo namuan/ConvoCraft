@@ -22,7 +22,7 @@ struct ContentView: View {
                 }
                 .tag(1)
         }
-        .frame(minWidth: 800, minHeight: 600)
+        .frame(minWidth: 1000, minHeight: 600)
         }
     }
 }
@@ -148,6 +148,7 @@ struct LiveTranscriptView: View {
 
 struct TranscriptSegmentView: View {
     let segment: TranscriptSegment
+    var isSelected: Bool = false
     
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
@@ -160,6 +161,15 @@ struct TranscriptSegmentView: View {
                 .textSelection(.enabled)
         }
         .padding(.horizontal)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(isSelected ? Color.accentColor.opacity(0.15) : Color.clear)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: 2)
+        )
     }
     
     private func formatTime(_ timestamp: TimeInterval) -> String {
@@ -296,15 +306,17 @@ struct SummaryListView: View {
                 ToolbarItem(placement: .primaryAction) {
                     if isSelectMode {
                         HStack {
-                            Button("Select All") {
-                                selectAll()
+                            Button(action: selectAll) {
+                                Label("Select All", systemImage: "checkmark.circle")
                             }
                             .disabled(selectedSummaries.count == summaries.count)
+                            .help("Select all summaries")
                             
-                            Button("Delete Selected") {
-                                showBulkDeleteConfirmation = true
+                            Button(action: { showBulkDeleteConfirmation = true }) {
+                                Label("Delete Selected", systemImage: "trash")
                             }
                             .disabled(selectedSummaries.isEmpty)
+                            .help("Delete selected summaries")
                         }
                     }
                 }
@@ -359,6 +371,7 @@ struct SummaryListView: View {
             } message: {
                 Text("This will permanently delete \(selectedSummaries.count) meeting summaries and cannot be undone.")
             }
+            .navigationSplitViewColumnWidth(min: 280, ideal: 320, max: 500)
         } detail: {
             if let summary = selectedSummary {
                 SummaryDetailView(summary: summary)
@@ -391,6 +404,7 @@ struct SummaryListView: View {
 
 struct SummaryDetailView: View {
     let summary: MeetingSummary
+    @State private var selectedSegmentID: UUID?
     
     var body: some View {
         ScrollView {
@@ -435,7 +449,15 @@ struct SummaryDetailView: View {
                         
                         VStack(alignment: .leading, spacing: 12) {
                             ForEach(summary.transcript) { segment in
-                                TranscriptSegmentView(segment: segment)
+                                TranscriptSegmentView(
+                                    segment: segment,
+                                    isSelected: selectedSegmentID == segment.id
+                                )
+                                .onTapGesture {
+                                    withAnimation(.easeInOut(duration: 0.2)) {
+                                        selectedSegmentID = selectedSegmentID == segment.id ? nil : segment.id
+                                    }
+                                }
                             }
                         }
                         .padding()
