@@ -4,11 +4,30 @@ import Foundation
 import NaturalLanguage
 #endif
 
+#if canImport(FoundationModels)
+@available(macOS 26.0, *)
+class FoundationModelsWrapper {
+    let service = FoundationModelsService()
+}
+#endif
+
 actor IntelligenceEngine {
     private(set) var insights: [IntelligenceInsight] = []
     
     #if canImport(NaturalLanguage)
     private let tagger = NLTagger(tagSchemes: [.nameType, .lexicalClass])
+    #endif
+    
+    #if canImport(FoundationModels)
+    private var foundationModelsWrapper: Any?
+    
+    init() {
+        #if canImport(FoundationModels)
+        if #available(macOS 26.0, *) {
+            foundationModelsWrapper = FoundationModelsWrapper()
+        }
+        #endif
+    }
     #endif
     
     func analyzeTranscript(_ segments: [TranscriptSegment]) async -> [IntelligenceInsight] {
@@ -19,10 +38,28 @@ actor IntelligenceEngine {
         let recentText = segments.map { $0.text }.joined(separator: " ")
         logDebug("📝 Analyzing text (\(recentText.count) chars): \(recentText.prefix(100))...")
         
-        // Tier 1: Lightweight NLP analysis
-        logDebug("🔍 Performing NLP analysis...")
-        newInsights += await performNLPAnalysis(recentText)
+        // Tier 1: Try Foundation Models first (if available)
+        #if canImport(FoundationModels)
+        if #available(macOS 26.0, *), let wrapper = foundationModelsWrapper as? FoundationModelsWrapper {
+            logDebug("🤖 Using Foundation Models for analysis...")
+            do {
+                newInsights = try await wrapper.service.generateLiveInsights(from: recentText)
+                logInfo("✨ Found \(newInsights.count) insights from Foundation Models")
+            } catch {
+                logWarning("⚠️ Foundation Models unavailable: \(error.localizedDescription). Falling back to NLP analysis.")
+                newInsights = await performNLPAnalysis(recentText)
+                logInfo("✨ Found \(newInsights.count) insights from NLP analysis (fallback)")
+            }
+        } else {
+            // Fallback to NLP for older macOS versions
+            newInsights = await performNLPAnalysis(recentText)
+            logInfo("✨ Found \(newInsights.count) insights from NLP analysis")
+        }
+        #else
+        // Fallback to NLP if Foundation Models not available
+        newInsights = await performNLPAnalysis(recentText)
         logInfo("✨ Found \(newInsights.count) insights from NLP analysis")
+        #endif
         
         // Store insights
         insights.append(contentsOf: newInsights)
