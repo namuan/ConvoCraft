@@ -289,6 +289,11 @@ struct SummaryListView: View {
                             }
                         }
                     }
+                    .listRowBackground(
+                        selectedSummary?.date == summary.date && !isSelectMode
+                            ? Color.accentColor.opacity(0.15)
+                            : Color.clear
+                    )
                     .contextMenu {
                         if !isSelectMode {
                             Button(role: .destructive) {
