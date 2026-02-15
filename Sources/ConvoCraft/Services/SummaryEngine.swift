@@ -97,49 +97,33 @@ actor SummaryEngine {
     }
     
     private func extractActionItems(from text: String) -> [String] {
-        var actionItems: [String] = []
-        
-        // Look for action-oriented phrases
         let actionPhrases = [
             "need to", "should", "must", "will do", "action item",
             "follow up", "task", "todo", "to do"
         ]
-        
-        let sentences = splitIntoSentences(text)
-        for sentence in sentences {
-            let lowerSentence = sentence.lowercased()
-            for phrase in actionPhrases {
-                if lowerSentence.contains(phrase) {
-                    actionItems.append(sentence)
-                    break
-                }
-            }
-        }
-        
-        return Array(actionItems.prefix(5)) // Limit to top 5
+        return extractSentencesContaining(phrases: actionPhrases, from: text, limit: 5)
     }
     
     private func extractKeyDecisions(from text: String) -> [String] {
-        var decisions: [String] = []
-        
-        // Look for decision-oriented phrases
         let decisionPhrases = [
             "decided", "agree", "approved", "confirmed", "committed",
             "going with", "final decision", "consensus"
         ]
-        
+        return extractSentencesContaining(phrases: decisionPhrases, from: text, limit: 5)
+    }
+    
+    private func extractSentencesContaining(phrases: [String], from text: String, limit: Int) -> [String] {
+        var results: [String] = []
         let sentences = splitIntoSentences(text)
+        
         for sentence in sentences {
             let lowerSentence = sentence.lowercased()
-            for phrase in decisionPhrases {
-                if lowerSentence.contains(phrase) {
-                    decisions.append(sentence)
-                    break
-                }
+            if phrases.contains(where: { lowerSentence.contains($0) }) {
+                results.append(sentence)
             }
         }
         
-        return Array(decisions.prefix(5)) // Limit to top 5
+        return Array(results.prefix(limit))
     }
     
     private func formatDate(_ date: Date) -> String {

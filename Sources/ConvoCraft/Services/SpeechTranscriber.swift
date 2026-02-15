@@ -49,129 +49,17 @@ class SpeechTranscriber: NSObject, ObservableObject {
         }
     }
     
-    // Alternative method that accepts an external audio stream (e.g., from AudioCaptureManager)
     func startTranscription(with audioDataStream: AsyncStream<Data>) async throws -> AsyncStream<(String, Bool)> {
         logInfo("🎬 SpeechTranscriber.startTranscription(with audioDataStream) called")
         
-        guard speechRecognizer?.isAvailable == true else {
-            logError("Speech recognizer is not available")
-            throw TranscriptionError.recognizerNotAvailable
-        }
-        logDebug("Speech recognizer is available")
+        try validateRecognizerAvailable()
+        let recognitionRequest = try createRecognitionRequest()
+        let stream = createTranscriptionStream()
+        startRecognitionTask(with: recognitionRequest)
         
-        guard authorizationStatus == .authorized else {
-            logError("Speech recognition not authorized, status: \(authorizationStatus.rawValue)")
-            throw TranscriptionError.notAuthorized
-        }
-        logSuccess("Speech recognition is authorized")
-        
-        // Create recognition request
-        logDebug("Creating SFSpeechAudioBufferRecognitionRequest...")
-        recognitionRequest = SFSpeechAudioBufferRecognitionRequest()
-        guard let recognitionRequest = recognitionRequest else {
-            logError("Failed to create recognition request")
-            throw TranscriptionError.failedToCreateRequest
-        }
-        logSuccess("Recognition request created")
-        
-        recognitionRequest.shouldReportPartialResults = true
-        recognitionRequest.requiresOnDeviceRecognition = true
-        logDebug("Recognition request configured: partialResults=true, onDevice=true")
-        
-        // Create async stream for transcription results
-        logDebug("Creating AsyncStream for transcription results...")
-        let stream = AsyncStream<(String, Bool)> { continuation in
-            self.transcriptContinuation = continuation
-        }
-        logSuccess("AsyncStream created")
-        
-        // Start recognition task
-        logDebug("Starting recognition task...")
-        recognitionTask = speechRecognizer?.recognitionTask(with: recognitionRequest) { [weak self] result, error in
-            guard let self = self else { return }
-            
-            Task { @MainActor in
-                if let result = result {
-                    let transcribedText = result.bestTranscription.formattedString
-                    let isFinal = result.isFinal
-                    logDebug("🗣 Transcription result: isFinal=\(isFinal), length=\(transcribedText.count) chars")
-                    self.transcriptContinuation?.yield((transcribedText, isFinal))
-                    
-                    if isFinal {
-                        logInfo("Final transcription segment received (utterance complete)")
-                        // Don't stop - let it continue capturing more utterances
-                    }
-                }
-                
-                if let error = error {
-                    logError("Recognition error: \(error.localizedDescription)")
-                    print("Recognition error: \(error)")
-                    // Only finish the stream on actual errors, not on normal completion
-                    self.transcriptContinuation?.finish()
-                }
-            }
-        }
-        
-        if recognitionTask == nil {
-            logError("Failed to create recognition task")
-            throw TranscriptionError.failedToCreateRequest
-        }
-        logSuccess("Recognition task started")
+        await processAudioDataStream(audioDataStream, recognitionRequest: recognitionRequest)
         
         isTranscribing = true
-        
-        // Start processing audio data stream
-        Task {
-            logInfo("🎵 Starting to process audio data stream...")
-            
-            // Create audio format for system audio (48kHz mono, as configured in AudioCaptureManager)
-            let audioFormat = AVAudioFormat(
-                commonFormat: .pcmFormatFloat32,
-                sampleRate: 48000,
-                channels: 1,
-                interleaved: false
-            )
-            
-            guard let audioFormat = audioFormat else {
-                logError("Failed to create audio format")
-                return
-            }
-            
-            logInfo("🎤 Audio format for transcription: sampleRate=\(audioFormat.sampleRate), channels=\(audioFormat.channelCount)")
-            
-            for await audioData in audioDataStream {
-                guard !Task.isCancelled else {
-                    logInfo("Audio processing task cancelled")
-                    break
-                }
-                
-                // Skip empty data
-                guard !audioData.isEmpty else { continue }
-                
-                // Convert Data to AVAudioPCMBuffer
-                let frameCapacity = AVAudioFrameCount(audioData.count / MemoryLayout<Float>.size)
-                guard let buffer = AVAudioPCMBuffer(pcmFormat: audioFormat, frameCapacity: frameCapacity) else {
-                    logWarning("Failed to create PCM buffer")
-                    continue
-                }
-                
-                buffer.frameLength = frameCapacity
-                
-                // Copy audio data to buffer
-                audioData.withUnsafeBytes { rawBufferPointer in
-                    guard let floatChannelData = buffer.floatChannelData else { return }
-                    let bytes = rawBufferPointer.bindMemory(to: Float.self)
-                    floatChannelData[0].update(from: bytes.baseAddress!, count: Int(frameCapacity))
-                }
-                
-                // Feed to recognition request
-                recognitionRequest.append(buffer)
-                logDebug("Appended \(audioData.count) bytes to recognition request")
-            }
-            
-            logInfo("Audio data stream ended")
-        }
-        
         logSuccess("✅ Transcription with external audio started successfully!")
         Logger.shared.logSeparator()
         
@@ -181,6 +69,21 @@ class SpeechTranscriber: NSObject, ObservableObject {
     func startTranscription() async throws -> AsyncStream<(String, Bool)> {
         logInfo("🎬 SpeechTranscriber.startTranscription() called")
         
+        try validateRecognizerAvailable()
+        let recognitionRequest = try createRecognitionRequest()
+        let stream = createTranscriptionStream()
+        startRecognitionTask(with: recognitionRequest)
+        
+        try await startAudioEngine(with: recognitionRequest)
+        
+        isTranscribing = true
+        logSuccess("✅ Transcription started successfully!")
+        Logger.shared.logSeparator()
+        
+        return stream
+    }
+    
+    private func validateRecognizerAvailable() throws {
         guard speechRecognizer?.isAvailable == true else {
             logError("Speech recognizer is not available")
             throw TranscriptionError.recognizerNotAvailable
@@ -192,28 +95,35 @@ class SpeechTranscriber: NSObject, ObservableObject {
             throw TranscriptionError.notAuthorized
         }
         logSuccess("Speech recognition is authorized")
-        
-        // Create recognition request
+    }
+    
+    private func createRecognitionRequest() throws -> SFSpeechAudioBufferRecognitionRequest {
         logDebug("Creating SFSpeechAudioBufferRecognitionRequest...")
         recognitionRequest = SFSpeechAudioBufferRecognitionRequest()
-        guard let recognitionRequest = recognitionRequest else {
+        
+        guard let request = recognitionRequest else {
             logError("Failed to create recognition request")
             throw TranscriptionError.failedToCreateRequest
         }
+        
+        request.shouldReportPartialResults = true
+        request.requiresOnDeviceRecognition = true
+        logDebug("Recognition request configured: partialResults=true, onDevice=true")
         logSuccess("Recognition request created")
         
-        recognitionRequest.shouldReportPartialResults = true
-        recognitionRequest.requiresOnDeviceRecognition = true
-        logDebug("Recognition request configured: partialResults=true, onDevice=true")
-        
-        // Create async stream for transcription results
+        return request
+    }
+    
+    private func createTranscriptionStream() -> AsyncStream<(String, Bool)> {
         logDebug("Creating AsyncStream for transcription results...")
         let stream = AsyncStream<(String, Bool)> { continuation in
             self.transcriptContinuation = continuation
         }
         logSuccess("AsyncStream created")
-        
-        // Start recognition task
+        return stream
+    }
+    
+    private func startRecognitionTask(with recognitionRequest: SFSpeechAudioBufferRecognitionRequest) {
         logDebug("Starting recognition task...")
         recognitionTask = speechRecognizer?.recognitionTask(with: recognitionRequest) { [weak self] result, error in
             guard let self = self else { return }
@@ -227,7 +137,6 @@ class SpeechTranscriber: NSObject, ObservableObject {
                     
                     if isFinal {
                         logInfo("Final transcription segment received (utterance complete)")
-                        // Don't stop - let it continue capturing more utterances
                     }
                 }
                 
@@ -238,20 +147,56 @@ class SpeechTranscriber: NSObject, ObservableObject {
                 }
             }
         }
-        
-        if recognitionTask == nil {
-            logError("Failed to create recognition task")
-            throw TranscriptionError.failedToCreateRequest
-        }
         logSuccess("Recognition task started")
-        
-        // Configure audio engine
+    }
+    
+    private func processAudioDataStream(_ audioDataStream: AsyncStream<Data>, recognitionRequest: SFSpeechAudioBufferRecognitionRequest) async {
+        Task {
+            logInfo("🎵 Starting to process audio data stream...")
+            
+            guard let audioFormat = AVAudioFormat(
+                commonFormat: .pcmFormatFloat32,
+                sampleRate: 48000,
+                channels: 1,
+                interleaved: false
+            ) else {
+                logError("Failed to create audio format")
+                return
+            }
+            
+            logInfo("🎤 Audio format for transcription: sampleRate=\(audioFormat.sampleRate), channels=\(audioFormat.channelCount)")
+            
+            for await audioData in audioDataStream {
+                guard !Task.isCancelled, !audioData.isEmpty else { continue }
+                
+                let frameCapacity = AVAudioFrameCount(audioData.count / MemoryLayout<Float>.size)
+                guard let buffer = AVAudioPCMBuffer(pcmFormat: audioFormat, frameCapacity: frameCapacity) else {
+                    logWarning("Failed to create PCM buffer")
+                    continue
+                }
+                
+                buffer.frameLength = frameCapacity
+                
+                audioData.withUnsafeBytes { rawBufferPointer in
+                    guard let floatChannelData = buffer.floatChannelData else { return }
+                    let bytes = rawBufferPointer.bindMemory(to: Float.self)
+                    floatChannelData[0].update(from: bytes.baseAddress!, count: Int(frameCapacity))
+                }
+                
+                recognitionRequest.append(buffer)
+                logDebug("Appended \(audioData.count) bytes to recognition request")
+            }
+            
+            logInfo("Audio data stream ended")
+        }
+    }
+    
+    private func startAudioEngine(with recognitionRequest: SFSpeechAudioBufferRecognitionRequest) async throws {
         logDebug("Configuring audio engine...")
         let inputNode = audioEngine.inputNode
         let recordingFormat = inputNode.outputFormat(forBus: 0)
         logInfo("🎤 Audio format: sampleRate=\(recordingFormat.sampleRate), channels=\(recordingFormat.channelCount)")
         
-        // Set up audio tap using nonisolated helper to avoid actor isolation issues
         logDebug("Installing audio tap on input node...")
         setupAudioTap(inputNode: inputNode, recognitionRequest: recognitionRequest)
         logSuccess("Audio tap installed")
@@ -261,12 +206,6 @@ class SpeechTranscriber: NSObject, ObservableObject {
         logDebug("Starting audio engine...")
         try audioEngine.start()
         logSuccess("🎵 Audio engine started successfully!")
-        
-        isTranscribing = true
-        logSuccess("✅ Transcription started successfully!")
-        Logger.shared.logSeparator()
-        
-        return stream
     }
     
     func stopTranscription() {

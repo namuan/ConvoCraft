@@ -6,58 +6,63 @@ actor TranscriptStore {
     private var lastProcessedText: String = ""
     
     func addPartialSegment(_ segment: TranscriptSegment) {
-        // Speech recognition provides cumulative text
-        // Extract only the NEW text that wasn't in the previous update
-        let newText: String
-        if segment.text.hasPrefix(lastProcessedText) && segment.text.count > lastProcessedText.count {
-            // New text is everything after what we already have
-            let startIndex = segment.text.index(segment.text.startIndex, offsetBy: lastProcessedText.count)
-            newText = String(segment.text[startIndex...]).trimmingCharacters(in: .whitespacesAndNewlines)
-            print("➕ Extracted new text (\(newText.count) chars): \(newText.prefix(80))...")
-        } else if segment.text != lastProcessedText {
-            // Completely different text (e.g., new utterance started)
-            newText = segment.text
-            print("🔄 Completely new utterance (\(newText.count) chars): \(newText.prefix(80))...")
-        } else {
-            // No change
-            return
+        let newText = extractNewText(from: segment.text)
+        
+        guard !newText.isEmpty else { return }
+        
+        if shouldFinalizePartial(newText: newText) {
+            print("🔄 Finalizing segment due to: \(newText.count >= 100 ? "length" : "punctuation")")
+            finalizeCurrent()
         }
         
-        if !newText.isEmpty {
-            // Check if this looks like a complete thought (ends with punctuation or has significant length)
-            let shouldFinalize = newText.count >= 100 || 
-                                 newText.hasSuffix(".") || 
-                                 newText.hasSuffix("?") || 
-                                 newText.hasSuffix("!")
-            
-            if shouldFinalize && partialSegment != nil {
-                // Finalize the previous partial before starting a new one
-                print("🔄 Finalizing segment due to: \(newText.count >= 100 ? "length" : "punctuation")")
-                finalizeCurrent()
-            }
-            
-            // Accumulate the new text in partial segment
-            if let partial = partialSegment {
-                let combinedText = partial.text + " " + newText
-                partialSegment = TranscriptSegment(
-                    id: partial.id,
-                    text: combinedText,
-                    timestamp: segment.timestamp,
-                    isFinal: false
-                )
-                print("📝 Accumulated partial: \(combinedText.count) chars total")
-            } else {
-                partialSegment = TranscriptSegment(
-                    id: UUID(),
-                    text: newText,
-                    timestamp: segment.timestamp,
-                    isFinal: false
-                )
-                print("🆕 New partial segment: \(newText.prefix(60))... [\(newText.count) chars]")
-            }
-        }
-        
+        accumulatePartialText(newText, timestamp: segment.timestamp)
         lastProcessedText = segment.text
+    }
+    
+    private func extractNewText(from text: String) -> String {
+        if text.hasPrefix(lastProcessedText) && text.count > lastProcessedText.count {
+            let startIndex = text.index(text.startIndex, offsetBy: lastProcessedText.count)
+            let extracted = String(text[startIndex...]).trimmingCharacters(in: .whitespacesAndNewlines)
+            print("➕ Extracted new text (\(extracted.count) chars): \(extracted.prefix(80))...")
+            return extracted
+        }
+        
+        if text != lastProcessedText {
+            print("🔄 Completely new utterance (\(text.count) chars): \(text.prefix(80))...")
+            return text
+        }
+        
+        return ""
+    }
+    
+    private func shouldFinalizePartial(newText: String) -> Bool {
+        guard partialSegment != nil else { return false }
+        
+        let hasSignificantLength = newText.count >= 100
+        let endsWithPunctuation = newText.hasSuffix(".") || newText.hasSuffix("?") || newText.hasSuffix("!")
+        
+        return hasSignificantLength || endsWithPunctuation
+    }
+    
+    private func accumulatePartialText(_ newText: String, timestamp: TimeInterval) {
+        if let partial = partialSegment {
+            let combinedText = partial.text + " " + newText
+            partialSegment = TranscriptSegment(
+                id: partial.id,
+                text: combinedText,
+                timestamp: timestamp,
+                isFinal: false
+            )
+            print("📝 Accumulated partial: \(combinedText.count) chars total")
+        } else {
+            partialSegment = TranscriptSegment(
+                id: UUID(),
+                text: newText,
+                timestamp: timestamp,
+                isFinal: false
+            )
+            print("🆕 New partial segment: \(newText.prefix(60))... [\(newText.count) chars]")
+        }
     }
     
     func finalizeCurrent() {

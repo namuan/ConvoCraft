@@ -226,51 +226,46 @@ class MeetingSessionController {
     private func checkAllPermissions() async -> Bool {
         logInfo("🔐 Checking all permissions...")
         
-        // Check speech recognition
         logDebug("Requesting speech recognition authorization...")
         let speechAuth = await speechTranscriber.requestAuthorization()
         speechTranscriber.updateAuthorizationStatus(speechAuth)
         logInfo("Speech recognition status: \(speechAuth.rawValue)")
-        if speechAuth != .authorized {
-            errorMessage = "⚠️ Speech recognition permission required. Please grant permission in System Settings."
-            return false
+        
+        guard speechAuth == .authorized else {
+            return setPermissionError("⚠️ Speech recognition permission required. Please grant permission in System Settings.")
         }
         
-        // Check microphone
         logDebug("Checking microphone permission...")
         let micGranted = await speechTranscriber.requestMicrophonePermission()
         logInfo("Microphone permission: \(micGranted ? "granted" : "denied")")
-        if !micGranted {
-            errorMessage = "⚠️ Microphone permission required. Please grant permission in System Settings."
-            return false
+        
+        guard micGranted else {
+            return setPermissionError("⚠️ Microphone permission required. Please grant permission in System Settings.")
         }
         
-        // Check screen recording (for audio capture)
         #if canImport(ScreenCaptureKit)
         guard #available(macOS 12.3, *) else {
-            let msg = "⚠️ macOS 12.3 or later is required for audio capture."
-            logError(msg)
-            errorMessage = msg
-            return false
+            return setPermissionError("⚠️ macOS 12.3 or later is required for audio capture.")
         }
         
         logDebug("Checking screen recording permission...")
         do {
-            let _ = try await SCShareableContent.excludingDesktopWindows(
-                false,
-                onScreenWindowsOnly: true
-            )
+            let _ = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
             logSuccess("Screen recording permission granted")
         } catch {
-            let msg = "⚠️ Screen Recording permission required. Please grant permission in System Settings > Privacy & Security > Screen Recording."
             logError("Screen recording permission check failed: \(error.localizedDescription)")
-            errorMessage = msg
-            return false
+            return setPermissionError("⚠️ Screen Recording permission required. Please grant permission in System Settings > Privacy & Security > Screen Recording.")
         }
         #endif
         
         logSuccess("All permissions validated!")
         return true
+    }
+    
+    private func setPermissionError(_ message: String) -> Bool {
+        errorMessage = message
+        logError(message)
+        return false
     }
     
     private func generateFinalSummary() async {

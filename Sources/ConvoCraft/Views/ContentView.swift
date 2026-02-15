@@ -203,10 +203,8 @@ struct InsightsView: View {
     }
     
     private var sortedInsights: [IntelligenceInsight] {
-        if sortByReverseChronological {
-            return insights.sorted { $0.timestamp > $1.timestamp }
-        }
-        return insights.sorted { $0.timestamp < $1.timestamp }
+        let ascending = !sortByReverseChronological
+        return insights.sorted { ascending ? $0.timestamp < $1.timestamp : $0.timestamp > $1.timestamp }
     }
     
     var body: some View {
