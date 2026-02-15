@@ -90,7 +90,7 @@ struct MeetingView: View {
                 .frame(minWidth: 300)
                 
                 // Right: Insights
-                InsightsView(insights: controller.insights)
+                InsightsView(insights: controller.insights, sortByReverseChronological: true)
                     .frame(minWidth: 300)
             }
         }
@@ -182,6 +182,19 @@ struct TranscriptSegmentView: View {
 
 struct InsightsView: View {
     let insights: [IntelligenceInsight]
+    let sortByReverseChronological: Bool
+    
+    init(insights: [IntelligenceInsight], sortByReverseChronological: Bool = false) {
+        self.insights = insights
+        self.sortByReverseChronological = sortByReverseChronological
+    }
+    
+    private var sortedInsights: [IntelligenceInsight] {
+        if sortByReverseChronological {
+            return insights.sorted { $0.timestamp > $1.timestamp }
+        }
+        return insights.sorted { $0.timestamp < $1.timestamp }
+    }
     
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -193,7 +206,7 @@ struct InsightsView: View {
             
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 12) {
-                    ForEach(insights) { insight in
+                    ForEach(sortedInsights) { insight in
                         InsightCardView(insight: insight)
                     }
                     
