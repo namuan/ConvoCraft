@@ -2,6 +2,8 @@
 
 A macOS meeting assistant that provides real-time transcription and AI-driven insights using only Apple frameworks.
 
+![ConvoCraft Demo](assets/intro.png)
+
 > **Note**: This application is designed exclusively for macOS 14.0+ and requires macOS-specific frameworks (SwiftUI, Speech, AVFoundation, ScreenCaptureKit, NaturalLanguage). It will not build on Linux or other platforms.
 
 ## Features
