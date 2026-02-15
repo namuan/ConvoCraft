@@ -58,4 +58,4 @@ swift run
 
 ## License
 
-MIT License - See LICENSE file for details
+MIT License - [LICENSE](LICENSE)
