@@ -183,15 +183,7 @@ actor IntelligenceEngine {
             }
         }
         
-        // 4. Generate general insight about conversation length/depth
-        if sentences.count >= 3 {
-            let wordCount = text.components(separatedBy: .whitespacesAndNewlines).count
-            logInfo("📊 Conversation stats: \(sentences.count) sentences, ~\(wordCount) words")
-            detectedInsights.append(IntelligenceInsight(
-                type: .idea,
-                content: "Active discussion in progress (\(sentences.count) points made)"
-            ))
-        }
+
         
         #endif
         
