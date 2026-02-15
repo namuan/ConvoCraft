@@ -49,11 +49,6 @@ swift build
 swift run
 ```
 
-Or open in Xcode (recommended):
-1. Open Package.swift in Xcode
-2. Select the ConvoCraft scheme
-3. Build and run (⌘R)
-
 ## Privacy & Security
 
 - ✅ **Fully local processing** - No cloud APIs
