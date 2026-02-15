@@ -235,6 +235,12 @@ struct InsightCardView: View {
                     .font(.caption)
                     .fontWeight(.semibold)
                     .foregroundColor(colorForType(insight.type))
+                
+                Spacer()
+                
+                Text(formatTime(insight.timestamp))
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             }
             
             Text(insight.content)
@@ -244,6 +250,13 @@ struct InsightCardView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color(NSColor.textBackgroundColor))
         .cornerRadius(8)
+    }
+    
+    private func formatTime(_ timestamp: TimeInterval) -> String {
+        let date = Date(timeIntervalSince1970: timestamp)
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm:ss"
+        return formatter.string(from: date)
     }
     
     private func iconForType(_ type: InsightType) -> String {
