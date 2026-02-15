@@ -16,10 +16,10 @@ struct OnboardingView: View {
     @State private var isCheckingPermissions = false
     
     var body: some View {
-        VStack(spacing: 30) {
+        VStack(spacing: 20) {
             // Logo/Icon
             Image(systemName: "mic.circle.fill")
-                .font(.system(size: 80))
+                .font(.system(size: 70))
                 .foregroundColor(.blue)
             
             Text("Welcome to ConvoCraft")
@@ -31,7 +31,7 @@ struct OnboardingView: View {
                 .foregroundColor(.secondary)
             
             Divider()
-                .padding(.vertical)
+                .padding(.vertical, 10)
             
             // Permission steps
             VStack(alignment: .leading, spacing: 20) {
@@ -71,17 +71,18 @@ struct OnboardingView: View {
             .background(Color(NSColor.controlBackgroundColor))
             .cornerRadius(10)
             
-            Spacer()
+            Spacer(minLength: 10)
             
-            // Status message
-            if isCheckingPermissions {
-                HStack {
+            // Status message - fixed height to prevent layout shifts
+            HStack {
+                if isCheckingPermissions {
                     ProgressView()
                         .scaleEffect(0.8)
                     Text("Checking permissions...")
                         .foregroundColor(.secondary)
                 }
             }
+            .frame(height: 20)
             
             // Continue button
             Button(action: {
@@ -101,16 +102,20 @@ struct OnboardingView: View {
             .controlSize(.large)
             .disabled(isCheckingPermissions)
             
-            if !allPermissionsGranted && (speechAuthStatus != .notDetermined || microphoneGranted || screenRecordingGranted) {
-                Text("Some permissions are missing. Please grant all permissions to continue.")
-                    .font(.caption)
-                    .foregroundColor(.orange)
-                    .multilineTextAlignment(.center)
+            // Warning message - fixed height to prevent layout shifts
+            Group {
+                if !allPermissionsGranted && (speechAuthStatus != .notDetermined || microphoneGranted || screenRecordingGranted) {
+                    Text("Some permissions are missing. Please grant all permissions to continue.")
+                        .font(.caption)
+                        .foregroundColor(.orange)
+                        .multilineTextAlignment(.center)
+                }
             }
+            .frame(height: 32)
         }
-        .padding(40)
-        .padding(.bottom, 20)
-        .frame(width: 600, height: 700)
+        .padding(30)
+        .padding(.bottom, 30)
+        .frame(width: 600, height: 720)
         .task {
             await checkPermissions()
         }
