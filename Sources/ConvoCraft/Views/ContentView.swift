@@ -29,6 +29,7 @@ struct ContentView: View {
 
 struct MeetingView: View {
     @Bindable var controller: MeetingSessionController
+    @State private var showSettings = false
     
     var body: some View {
         VStack(spacing: 0) {
@@ -39,6 +40,15 @@ struct MeetingView: View {
                     .fontWeight(.bold)
                 
                 Spacer()
+                
+                // Settings button
+                Button(action: {
+                    showSettings = true
+                }) {
+                    Label("Settings", systemImage: "gearshape")
+                }
+                .buttonStyle(.bordered)
+                .help("Open settings")
                 
                 // Logs button
                 Button(action: {
@@ -93,6 +103,9 @@ struct MeetingView: View {
                 InsightsView(insights: controller.insights, sortByReverseChronological: true)
                     .frame(minWidth: 300)
             }
+        }
+        .sheet(isPresented: $showSettings) {
+            SettingsView()
         }
     }
 }
