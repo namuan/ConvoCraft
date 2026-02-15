@@ -6,12 +6,8 @@ final class FoundationModelsService: @unchecked Sendable {
     private let model = SystemLanguageModel()
     private var session: LanguageModelSession?
     
-    init() {
-        session = LanguageModelSession(model: model)
-    }
-    
-    func generateLiveInsights(from text: String) async throws -> [IntelligenceInsight] {
-        let prompt = """
+    // Default prompt for AI insight generation
+    static let defaultInsightPrompt = """
         Analyze this recent meeting discussion and extract meaningful, actionable live insights. Identify:
         
         1. **Deep topics**: Not just keywords - explain what's being discussed about the topic
@@ -43,8 +39,31 @@ final class FoundationModelsService: @unchecked Sendable {
         
         Keep insights concise but meaningful. Focus on quality over quantity. Limit to 2-4 high-quality insights.
         """
-        
-        let userPrompt = "\(prompt)\n\nRecent discussion:\n\(text)"
+    
+    // UserDefaults key for storing custom prompt
+    private static let insightPromptKey = "ConvoCraft.InsightPrompt"
+    
+    // Current prompt (default or custom)
+    var insightPrompt: String {
+        get {
+            return UserDefaults.standard.string(forKey: Self.insightPromptKey) ?? Self.defaultInsightPrompt
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: Self.insightPromptKey)
+        }
+    }
+    
+    // Reset to default prompt
+    func resetInsightPromptToDefault() {
+        UserDefaults.standard.removeObject(forKey: Self.insightPromptKey)
+    }
+    
+    init() {
+        session = LanguageModelSession(model: model)
+    }
+    
+    func generateLiveInsights(from text: String) async throws -> [IntelligenceInsight] {
+        let userPrompt = "\(insightPrompt)\n\nRecent discussion:\n\(text)"
         let options = GenerationOptions(temperature: 0.3) // Lower temperature for more focused output
         
         guard let session = session else {
