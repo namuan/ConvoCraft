@@ -32,37 +32,19 @@ ConvoCraft is built exclusively with Apple frameworks:
 - **AVFoundation** - Audio processing
 - **Actors** - Concurrency-safe state management
 
-### System Architecture
-
-```
-SwiftUI App
-    ↓
-MeetingSessionController
-    ↓
-┌─────────────────┬──────────────────┐
-│                 │                  │
-SpeechTranscriber TranscriptStore   IntelligenceEngine
-│                 │                  │
-└─────────────────┴──────────────────┘
-                  ↓
-            SummaryEngine
-                  ↓
-           PersistenceLayer
-```
-
 ## Requirements
 
-- **macOS 14.0 or later** (required)
+- macOS 14.0 or later
 - Microphone permission
 - Speech recognition permission
 - Screen capture permission (for system audio)
 
 ## Building
 
-This is a Swift Package Manager project that **must be built on macOS**:
+This is a Swift Package Manager project:
 
 ```bash
-# On macOS only
+# Clone and build
 swift build
 swift run
 ```
@@ -72,15 +54,6 @@ Or open in Xcode (recommended):
 2. Select the ConvoCraft scheme
 3. Build and run (⌘R)
 
-### Creating an App Bundle
-
-To create a proper macOS app with the Info.plist:
-1. Open in Xcode
-2. Create a new macOS App target
-3. Copy the source files from Sources/ConvoCraft
-4. Copy Info.plist to the app target
-5. Build for distribution
-
 ## Privacy & Security
 
 - ✅ **Fully local processing** - No cloud APIs
@@ -88,86 +61,6 @@ To create a proper macOS app with the Info.plist:
 - ✅ **User-initiated recording** - No background recording
 - ✅ **Local storage only** - Transcripts never leave device
 
-## Components
-
-### Models
-- **TranscriptSegment** - Individual transcript entries
-- **IntelligenceInsight** - AI-generated suggestions
-- **MeetingSummary** - Post-meeting summary structure
-
-### Actors (Concurrency-Safe)
-- **TranscriptStore** - Thread-safe transcript storage
-- **IntelligenceEngine** - NLP analysis engine
-
-### Services
-- **AudioCaptureManager** - ScreenCaptureKit audio capture
-- **SpeechTranscriber** - Real-time speech recognition
-- **SummaryEngine** - Post-meeting summary generation
-- **PersistenceLayer** - JSON-based storage
-- **MeetingSessionController** - Coordinates all components
-
-### Views
-- **ContentView** - Main app container
-- **MeetingView** - Live meeting interface
-- **LiveTranscriptView** - Real-time transcript display
-- **InsightsView** - AI insights panel
-- **SummaryListView** - Previous meetings list
-- **SummaryDetailView** - Detailed summary view
-
-## Usage
-
-1. **Start a Meeting**: Click "Start Meeting" button
-2. **Grant Permissions**: Allow microphone and speech recognition
-3. **Speak Naturally**: The app will transcribe in real-time
-4. **Monitor Insights**: AI insights appear in the right panel
-5. **Stop Meeting**: Click "Stop Meeting" when done
-6. **View Summary**: Check the "Summaries" tab for saved meetings
-
-## Implementation Notes
-
-### Intelligence Engine
-
-The intelligence engine uses a two-tier approach:
-
-**Tier 1: NaturalLanguage Framework**
-- Fast, lightweight pattern detection
-- Named entity recognition
-- Commitment/action phrase detection
-- Risk signal identification
-- Runs continuously with minimal CPU
-
-**Tier 2: Foundation Models (Future)**
-- Contextual reasoning (when FoundationModels is available)
-- Sliding context window to manage token limits
-- Batched invocation to reduce overhead
-
-### Concurrency Model
-
-All long-running operations use Swift's structured concurrency:
-- Audio capture runs in async task
-- Speech recognition streams results
-- NLP analysis runs periodically
-- All state updates via MainActor
-- No shared mutable state
-
-### Performance Considerations
-
-- Speech recognition runs continuously (~300-800ms latency)
-- LLM inference batched (every 10 seconds)
-- Sliding context window prevents memory growth
-- Audio buffers not retained long-term
-
-## Permissions
-
-The Info.plist file contains the required permission descriptions:
-- `NSMicrophoneUsageDescription` - Microphone access for transcription
-- `NSSpeechRecognitionUsageDescription` - Speech recognition for live transcription
-- `NSScreenCaptureDescription` - Screen capture for system audio recording
-
 ## License
 
 MIT License - See LICENSE file for details
-
-## Credits
-
-Built following the architecture defined in PLAN.md, using only Apple-provided frameworks for maximum privacy and integration with macOS.
