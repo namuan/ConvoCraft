@@ -77,66 +77,46 @@ final class FoundationModelsService: @unchecked Sendable {
         var insights = parseInsightsFromResponse(response.content)
         
         // Filter and enhance insights quality
-        insights = enhanceInsightsQuality(insights)
+        insights = enhanceInsightsQuality(insights, sourceText: text)
         
         return insights
     }
     
-    private func enhanceInsightsQuality(_ insights: [IntelligenceInsight]) -> [IntelligenceInsight] {
+    private func enhanceInsightsQuality(_ insights: [IntelligenceInsight], sourceText: String) -> [IntelligenceInsight] {
         return insights.compactMap { insight in
-            // Skip low-quality ideas that are just keywords or too vague
             if insight.type == .idea {
                 let content = insight.content.trimmingCharacters(in: .whitespacesAndNewlines)
                 
-                // Filter out insights that are too short or contain only keywords
-                if content.count < 8 || isKeywordOnly(content) {
+                if content.count < 4 || isKeywordOnly(content) {
                     logDebug("⚠️ Skipping low-quality idea: \(content)")
                     return nil
                 }
                 
-                // Improve formatting of ideas
                 var improvedContent = content
-                
-                // Remove generic prefixes like "Key topic: " or "Topic: "
                 improvedContent = improvedContent.replacingOccurrences(of: "Key topic: ", with: "", options: .caseInsensitive)
                 improvedContent = improvedContent.replacingOccurrences(of: "Topic: ", with: "", options: .caseInsensitive)
                 improvedContent = improvedContent.replacingOccurrences(of: "Idea: ", with: "", options: .caseInsensitive)
                 
-                return IntelligenceInsight(type: insight.type, content: improvedContent)
+                return IntelligenceInsight(type: insight.type, content: improvedContent, sourceText: sourceText)
             }
             
-            return insight
+            return IntelligenceInsight(type: insight.type, content: insight.content, sourceText: sourceText)
         }
     }
     
     private func isKeywordOnly(_ text: String) -> Bool {
-        // Check if text is likely to be just a single keyword or very simple phrase
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        
-        // Criteria for keyword-only insights:
-        // - Very short (less than 3 words)
-        // - Contains no verbs or adjectives
-        // - Looks like a single noun phrase with no context
-        
         let wordCount = trimmed.components(separatedBy: .whitespaces).filter { !$0.isEmpty }.count
-        if wordCount <= 2 {
+        
+        if wordCount <= 1 {
             return true
         }
         
-        // Check for patterns that indicate keyword-only insights
-        let keywordPatterns = [
-            "^[A-Z][a-z]*$", // Single capitalized word
-            "^[a-z]+$",      // Single lowercase word
-            "^[A-Z][a-z]+ [A-Z][a-z]+$", // Two capitalized words with no other context
-            "^[A-Z]+$"       // All uppercase acronym
-        ]
-        
-        for pattern in keywordPatterns {
-            if let regex = try? NSRegularExpression(pattern: pattern) {
-                let range = NSRange(location: 0, length: trimmed.utf16.count)
-                if regex.firstMatch(in: trimmed, options: [], range: range) != nil {
-                    return true
-                }
+        if wordCount <= 2 {
+            let pattern = "^([A-Z][a-z]+|[a-z]+|[A-Z]+)$"
+            if let regex = try? NSRegularExpression(pattern: pattern),
+               regex.firstMatch(in: trimmed, range: NSRange(location: 0, length: trimmed.utf16.count)) != nil {
+                return true
             }
         }
         

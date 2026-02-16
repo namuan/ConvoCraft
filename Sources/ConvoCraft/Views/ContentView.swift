@@ -236,6 +236,7 @@ struct InsightsView: View {
 
 struct InsightCardView: View {
     let insight: IntelligenceInsight
+    @State private var isExpanded: Bool = false
     
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -249,6 +250,19 @@ struct InsightCardView: View {
                 
                 Spacer()
                 
+                if insight.sourceText != nil {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            isExpanded.toggle()
+                        }
+                    } label: {
+                        Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+                
                 Text(formatTime(insight.timestamp))
                     .font(.caption)
                     .foregroundColor(.secondary)
@@ -256,6 +270,21 @@ struct InsightCardView: View {
             
             Text(insight.content)
                 .font(.body)
+            
+            if isExpanded, let sourceText = insight.sourceText {
+                Divider()
+                    .padding(.top, 4)
+                
+                Text("Source:")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.secondary)
+                
+                Text(sourceText)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .lineLimit(5)
+            }
         }
         .padding()
         .frame(maxWidth: .infinity, alignment: .leading)

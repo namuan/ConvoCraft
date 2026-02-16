@@ -36,7 +36,13 @@ actor IntelligenceEngine {
         let recentText = segments.map { $0.text }.joined(separator: " ")
         logDebug("📝 Analyzing text (\(recentText.count) chars): \(recentText.prefix(100))...")
         
-        let newInsights = await analyzeWithBestAvailableMethod(recentText)
+        let sentences = extractSentences(from: recentText)
+        let lastSentences = Array(sentences.suffix(3)).joined(separator: ". ")
+        let textToAnalyze = lastSentences.isEmpty ? recentText : lastSentences
+        
+        logDebug("📝 Analyzing last \(min(3, sentences.count)) sentences (\(textToAnalyze.count) chars)")
+        
+        let newInsights = await analyzeWithBestAvailableMethod(textToAnalyze)
         
         insights.append(contentsOf: newInsights)
         logSuccess("📊 Total insights stored: \(insights.count)")
@@ -86,13 +92,9 @@ actor IntelligenceEngine {
         tagger.string = text
         let range = text.startIndex..<text.endIndex
         
-        // 3. Analyze sentences for questions and statements (moved early for context)
         logDebug("❓ Analyzing sentence structure...")
-        let sentences = text.components(separatedBy: CharacterSet(charactersIn: ".?!"))
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
+        let sentences = extractSentences(from: text)
         
-        // 1. Extract named entities (people, organizations)
         logDebug("🏷 Extracting named entities...")
         var entities: Set<String> = []
         tagger.enumerateTags(in: range, unit: .word, scheme: .nameType) { tag, tokenRange in
@@ -112,24 +114,20 @@ actor IntelligenceEngine {
             return true
         }
         
-        // Generate meaningful insights from entities (with context)
         for entity in entities.prefix(1) {
             let sentencesWithEntity = sentences.filter { $0.contains(entity) }
             let insightContent: String
             
             if let contextSentence = sentencesWithEntity.first {
-                let context = String(contextSentence.prefix(80))
-                let ellipsis = contextSentence.count > 80 ? "..." : ""
-                insightContent = "Discussion about \(entity): \(context)\(ellipsis)"
+                insightContent = "Discussion about \(entity): \(formatWithEllipsis(contextSentence, maxLength: 80))"
             } else {
                 insightContent = "Discussion involving: \(entity)"
             }
             
-            detectedInsights.append(IntelligenceInsight(type: .idea, content: insightContent))
+            detectedInsights.append(IntelligenceInsight(type: .idea, content: insightContent, sourceText: text))
             logInfo("🏢 Found contextual entity insight: \(entity)")
         }
         
-        // 2. Extract meaningful topics with context
         logDebug("📝 Extracting key topics...")
         var nouns: [String] = []
         var verbs: [String] = []
@@ -145,7 +143,6 @@ actor IntelligenceEngine {
             return true
         }
         
-        // Get most common nouns as topics with minimum frequency
         let topicCounts = Dictionary(grouping: nouns, by: { $0.lowercased() })
             .mapValues { $0.count }
             .sorted { $0.value > $1.value }
@@ -157,14 +154,12 @@ actor IntelligenceEngine {
             let insightContent: String
             
             if let contextSentence = sentencesWithTopic.first {
-                let context = String(contextSentence.prefix(80))
-                let ellipsis = contextSentence.count > 80 ? "..." : ""
-                insightContent = "Key discussion topic: \(topTopic.key) - \(context)\(ellipsis)"
+                insightContent = "Key discussion topic: \(topTopic.key) - \(formatWithEllipsis(contextSentence, maxLength: 80))"
             } else {
                 insightContent = "Key topic: \(topTopic.key)"
             }
             
-            detectedInsights.append(IntelligenceInsight(type: .idea, content: insightContent))
+            detectedInsights.append(IntelligenceInsight(type: .idea, content: insightContent, sourceText: text))
         }
         
         let questions = sentences.filter { $0.last == "?" || $0.lowercased().hasPrefix("what") || 
@@ -173,15 +168,13 @@ actor IntelligenceEngine {
         if !questions.isEmpty {
             logInfo("❓ Found \(questions.count) question(s)")
             if let firstQuestion = questions.first {
-                let preview = String(firstQuestion.prefix(60))
                 detectedInsights.append(IntelligenceInsight(
                     type: .question,
-                    content: "Question raised: \(preview)\(firstQuestion.count > 60 ? "..." : "")"
+                    content: "Question raised: \(formatWithEllipsis(firstQuestion, maxLength: 60))",
+                    sourceText: text
                 ))
             }
         }
-        
-
         
         #endif
         
@@ -197,5 +190,16 @@ actor IntelligenceEngine {
     
     func clearInsights() {
         insights.removeAll()
+    }
+    
+    private func extractSentences(from text: String) -> [String] {
+        return text.components(separatedBy: CharacterSet(charactersIn: ".?!"))
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+    }
+    
+    private func formatWithEllipsis(_ text: String, maxLength: Int) -> String {
+        let trimmed = String(text.prefix(maxLength))
+        return text.count > maxLength ? "\(trimmed)..." : trimmed
     }
 }
