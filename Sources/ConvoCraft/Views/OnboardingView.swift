@@ -119,6 +119,8 @@ struct OnboardingView: View {
     
 }
 
+#if DEBUG
 #Preview {
     OnboardingView(isOnboardingComplete: .constant(false))
 }
+#endif

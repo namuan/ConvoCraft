@@ -310,6 +310,8 @@ struct PermissionRow: View {
     }
 }
 
+#if DEBUG
 #Preview {
     SettingsView()
 }
+#endif

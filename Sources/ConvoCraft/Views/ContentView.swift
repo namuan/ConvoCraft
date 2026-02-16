@@ -561,6 +561,8 @@ struct SectionView: View {
     }
 }
 
+#if DEBUG
 #Preview {
     ContentView()
 }
+#endif
