@@ -29,6 +29,7 @@ class MeetingSessionController {
     private var captureTask: Task<Void, Never>?
     private var transcriptionTask: Task<Void, Never>?
     private var analysisTask: Task<Void, Never>?
+    private var lastAnalyzedTextHash: Int?
     
     func startMeeting() async {
         logInfo("🎬 startMeeting() called")
@@ -168,8 +169,8 @@ class MeetingSessionController {
         analysisTask = Task {
             var analysisCount = 0
             while !Task.isCancelled {
-                // Wait 10 seconds between analyses
-                try? await Task.sleep(for: .seconds(10))
+                // Wait 20 seconds between analyses
+                try? await Task.sleep(for: .seconds(20))
                 
                 guard !Task.isCancelled else {
                     logInfo("🚫 Periodic analysis cancelled")
@@ -191,6 +192,15 @@ class MeetingSessionController {
                 logInfo("📝 Got \(recentSegments.count) recent transcript segments (last 2 minutes)")
                 
                 if !recentSegments.isEmpty {
+                    let recentText = recentSegments.map { $0.text }.joined(separator: " ")
+                    let textHash = recentText.hash
+                    
+                    guard textHash != lastAnalyzedTextHash else {
+                        logDebug("⏭ Skipping analysis cycle — no new transcript content")
+                        continue
+                    }
+                    lastAnalyzedTextHash = textHash
+                    
                     // Log segment content
                     let sampleText = recentSegments.first?.text ?? ""
                     logDebug("📤 Sample text: \(sampleText.prefix(50))...")
