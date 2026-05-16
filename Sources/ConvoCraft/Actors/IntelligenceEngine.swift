@@ -44,10 +44,13 @@ actor IntelligenceEngine {
         
         let newInsights = await analyzeWithBestAvailableMethod(textToAnalyze)
         
-        insights.append(contentsOf: newInsights)
+        let deduplicatedInsights = newInsights.filter { !isTooSimilar($0, to: insights) }
+        logDebug("📊 Dedup: \(newInsights.count) → \(deduplicatedInsights.count) insights")
+        
+        insights.append(contentsOf: deduplicatedInsights)
         logSuccess("📊 Total insights stored: \(insights.count)")
         
-        return newInsights
+        return deduplicatedInsights
     }
     
     private func analyzeWithBestAvailableMethod(_ text: String) async -> [IntelligenceInsight] {
@@ -119,7 +122,7 @@ actor IntelligenceEngine {
             let insightContent: String
             
             if let contextSentence = sentencesWithEntity.first {
-                insightContent = "Discussion about \(entity): \(formatWithEllipsis(contextSentence, maxLength: 80))"
+                insightContent = "Discussion about \(entity): \(formatWithEllipsis(contextSentence, maxLength: 200))"
             } else {
                 insightContent = "Discussion involving: \(entity)"
             }
@@ -154,7 +157,7 @@ actor IntelligenceEngine {
             let insightContent: String
             
             if let contextSentence = sentencesWithTopic.first {
-                insightContent = "Key discussion topic: \(topTopic.key) - \(formatWithEllipsis(contextSentence, maxLength: 80))"
+                insightContent = "Key discussion topic: \(topTopic.key) - \(formatWithEllipsis(contextSentence, maxLength: 200))"
             } else {
                 insightContent = "Key topic: \(topTopic.key)"
             }
@@ -170,7 +173,7 @@ actor IntelligenceEngine {
             if let firstQuestion = questions.first {
                 detectedInsights.append(IntelligenceInsight(
                     type: .question,
-                    content: "Question raised: \(formatWithEllipsis(firstQuestion, maxLength: 60))",
+                    content: "Question raised: \(formatWithEllipsis(firstQuestion, maxLength: 150))",
                     sourceText: text
                 ))
             }
@@ -179,8 +182,8 @@ actor IntelligenceEngine {
         #endif
         
         logInfo("📊 Total insights before limiting: \(detectedInsights.count)")
-        let limitedInsights = Array(detectedInsights.prefix(3))
-        logInfo("✅ Returning \(limitedInsights.count) insights (limit: 3)")
+        let limitedInsights = Array(detectedInsights.prefix(2))
+        logInfo("✅ Returning \(limitedInsights.count) insights (limit: 2)")
         return limitedInsights
     }
     
@@ -190,6 +193,23 @@ actor IntelligenceEngine {
     
     func clearInsights() {
         insights.removeAll()
+    }
+    
+    private func wordSet(from text: String) -> Set<String> {
+        Set(text.lowercased().components(separatedBy: CharacterSet.whitespacesAndNewlines.union(.punctuationCharacters)).filter { $0.count > 2 })
+    }
+    
+    private func isTooSimilar(_ insight: IntelligenceInsight, to existingInsights: [IntelligenceInsight], threshold: Double = 0.6) -> Bool {
+        let insightWords = wordSet(from: insight.content)
+        guard !insightWords.isEmpty else { return false }
+        
+        for existing in existingInsights.suffix(10) {
+            let existingWords = wordSet(from: existing.content)
+            guard !existingWords.isEmpty else { continue }
+            let jaccard = Double(insightWords.intersection(existingWords).count) / Double(insightWords.union(existingWords).count)
+            if jaccard >= threshold { return true }
+        }
+        return false
     }
     
     private func extractSentences(from text: String) -> [String] {
