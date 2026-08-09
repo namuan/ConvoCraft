@@ -63,14 +63,24 @@ class AudioCaptureManager: NSObject, ObservableObject {
         }
         
         if let stream = stream as? SCStream {
-            logDebug("Removing stream output...")
-            do {
-                try stream.removeStreamOutput(self, type: .audio)
-                logSuccess("Stream output removed")
-            } catch {
-                logWarning("Failed to remove stream output: \(error.localizedDescription)")
+            if #available(macOS 15.0, *) {
+                logDebug("Removing microphone stream output...")
+                do {
+                    try stream.removeStreamOutput(self, type: .microphone)
+                    logSuccess("Microphone stream output removed")
+                } catch {
+                    logWarning("Failed to remove microphone stream output: \(error.localizedDescription)")
+                }
+            } else {
+                logDebug("Removing system-audio stream output...")
+                do {
+                    try stream.removeStreamOutput(self, type: .audio)
+                    logSuccess("System-audio stream output removed")
+                } catch {
+                    logWarning("Failed to remove system-audio stream output: \(error.localizedDescription)")
+                }
             }
-            
+
             logDebug("Stopping SCStream...")
             try? await stream.stopCapture()
             logSuccess("SCStream stopped")
@@ -114,19 +124,22 @@ class AudioCaptureManager: NSObject, ObservableObject {
         // For now, capture system audio
         logDebug("Creating SCStreamConfiguration...")
         let config = SCStreamConfiguration()
-        config.capturesAudio = true
         config.sampleRate = 48000
         config.channelCount = 1
         config.excludesCurrentProcessAudio = false
-        logInfo("🎵 Audio config: sampleRate=\(config.sampleRate), channels=\(config.channelCount), capturesAudio=\(config.capturesAudio)")
-        
-        // Capture microphone if available (macOS 15.0+)
+
+        // SFSpeechRecognizer needs one time-ordered audio source. ScreenCaptureKit
+        // delivers system and microphone audio on independent clocks, so appending
+        // both streams directly corrupts timing. Prefer the microphone on macOS 15+.
         if #available(macOS 15.0, *) {
+            config.capturesAudio = false
             config.captureMicrophone = true
-            logInfo("🎤 Microphone capture enabled (macOS 15.0+)")
+            logInfo("🎤 Microphone is the transcription source (macOS 15.0+)")
         } else {
-            logInfo("⚠️ Microphone capture not available (requires macOS 15.0+)")
+            config.capturesAudio = true
+            logInfo("⚠️ Microphone capture not available; using system audio (requires macOS 15.0+)")
         }
+        logInfo("🎵 Audio config: sampleRate=\(config.sampleRate), channels=\(config.channelCount), capturesAudio=\(config.capturesAudio)")
         
         // Create filter - need to specify at least one display for audio capture
         logDebug("Creating SCContentFilter...")
@@ -143,13 +156,21 @@ class AudioCaptureManager: NSObject, ObservableObject {
         let captureStream = SCStream(filter: filter, configuration: config, delegate: self)
         logSuccess("SCStream created")
         
-        // Add output handler to receive audio samples
+        // Feed the recognizer from exactly one clocked source. Mixing the separate
+        // ScreenCaptureKit outputs requires timestamp-aware audio mixing, which this
+        // capture pipeline does not perform.
         do {
-            logDebug("Adding stream output handler...")
-            try captureStream.addStreamOutput(self, type: .audio, sampleHandlerQueue: .global())
-            logSuccess("Stream output handler added")
+            if #available(macOS 15.0, *) {
+                logDebug("Adding microphone stream output handler...")
+                try captureStream.addStreamOutput(self, type: .microphone, sampleHandlerQueue: .global())
+                logSuccess("Microphone stream output handler added")
+            } else {
+                logDebug("Adding system-audio stream output handler...")
+                try captureStream.addStreamOutput(self, type: .audio, sampleHandlerQueue: .global())
+                logSuccess("System-audio stream output handler added")
+            }
         } catch {
-            logError("Failed to add stream output: \(error.localizedDescription)")
+            logError("Failed to add transcription stream output: \(error.localizedDescription)")
             throw error
         }
         
@@ -199,7 +220,14 @@ extension AudioCaptureManager: SCStreamDelegate {
 @available(macOS 12.3, *)
 extension AudioCaptureManager: SCStreamOutput {
     nonisolated func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
-        guard type == .audio else { return }
+        let isMicrophoneSample: Bool
+        if #available(macOS 15.0, *) {
+            guard type == .microphone else { return }
+            isMicrophoneSample = true
+        } else {
+            guard type == .audio else { return }
+            isMicrophoneSample = false
+        }
         
         // Get audio format description
         guard let formatDescription = CMSampleBufferGetFormatDescription(sampleBuffer) else {
@@ -234,10 +262,11 @@ extension AudioCaptureManager: SCStreamOutput {
         // Convert to Data
         let audioData = Data(bytes: dataPointer, count: length)
         
+        let source = isMicrophoneSample ? "microphone" : "system audio"
         if let streamDesc = audioStreamBasicDescription?.pointee {
-            logDebug("🎵 Audio sample: \(audioData.count) bytes, \(streamDesc.mSampleRate)Hz, \(streamDesc.mChannelsPerFrame)ch")
+            logDebug("🎵 \(source) sample: \(audioData.count) bytes, \(streamDesc.mSampleRate)Hz, \(streamDesc.mChannelsPerFrame)ch, \(streamDesc.mBitsPerChannel)-bit")
         } else {
-            logDebug("🎵 Audio sample: \(audioData.count) bytes")
+            logDebug("🎵 \(source) sample: \(audioData.count) bytes")
         }
         
         Task { @MainActor in

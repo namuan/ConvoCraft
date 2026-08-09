@@ -1,10 +1,6 @@
 import Foundation
 import Observation
 
-#if canImport(ScreenCaptureKit)
-import ScreenCaptureKit
-#endif
-
 @MainActor
 @Observable
 class MeetingSessionController {
@@ -17,7 +13,6 @@ class MeetingSessionController {
     var lastSummary: MeetingSummary?
     
     // Services
-    private let audioCaptureManager = AudioCaptureManager()
     private let speechTranscriber = SpeechTranscriber()
     private let transcriptStore = TranscriptStore()
     private let intelligenceEngine = IntelligenceEngine()
@@ -90,9 +85,6 @@ class MeetingSessionController {
         logInfo("Stopping speech transcriber...")
         speechTranscriber.stopTranscription()
         
-        logInfo("Stopping audio capture...")
-        await audioCaptureManager.stopCapture()
-        
         isRecording = false
         logSuccess("Meeting stopped")
         
@@ -116,16 +108,14 @@ class MeetingSessionController {
     }
     
     private func startTranscriptionFlow() {
-        logInfo("📝 Starting transcription flow with system audio capture...")
+        logInfo("📝 Starting transcription flow from the selected microphone...")
         transcriptionTask = Task {
             do {
-                logInfo("Starting audio capture from system...")
-                let audioStream = try await audioCaptureManager.startCapture()
-                logSuccess("Audio capture stream obtained")
-                
-                logInfo("Requesting transcription with captured audio stream...")
-                let transcriptStream = try await speechTranscriber.startTranscription(with: audioStream)
-                logSuccess("Transcription stream obtained, listening for results...")
+                // AVAudioEngine reads the active macOS input device directly. This
+                // avoids ScreenCaptureKit's separate system/microphone streams and
+                // ensures spoken audio is sent to SFSpeechRecognizer unchanged.
+                let transcriptStream = try await speechTranscriber.startTranscription()
+                logSuccess("Microphone transcription stream obtained, listening for results...")
                 
                 for await (text, isFinal) in transcriptStream {
                     guard !Task.isCancelled else { break }
@@ -252,21 +242,6 @@ class MeetingSessionController {
         guard micGranted else {
             return setPermissionError("⚠️ Microphone permission required. Please grant permission in System Settings.")
         }
-        
-        #if canImport(ScreenCaptureKit)
-        guard #available(macOS 12.3, *) else {
-            return setPermissionError("⚠️ macOS 12.3 or later is required for audio capture.")
-        }
-        
-        logDebug("Checking screen recording permission...")
-        do {
-            let _ = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
-            logSuccess("Screen recording permission granted")
-        } catch {
-            logError("Screen recording permission check failed: \(error.localizedDescription)")
-            return setPermissionError("⚠️ Screen Recording permission required. Please grant permission in System Settings > Privacy & Security > Screen Recording.")
-        }
-        #endif
         
         logSuccess("All permissions validated!")
         return true
