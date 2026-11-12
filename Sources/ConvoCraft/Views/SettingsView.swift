@@ -93,10 +93,10 @@ struct SettingsView: View {
             
             PermissionRow(
                 icon: "rectangle.on.rectangle",
-                title: "Screen Recording",
-                description: "Required to capture system audio from meetings",
-                status: permissionsManager.screenRecordingGranted,
-                action: permissionsManager.requestScreenRecording
+                title: "System Audio Recording",
+                description: "Required to capture the other side of your meetings",
+                status: permissionsManager.systemAudioGranted,
+                action: permissionsManager.requestSystemAudio
             )
         }
         .padding()

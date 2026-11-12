@@ -16,8 +16,8 @@
     <string>ConvoCraft needs microphone access to transcribe your meetings.</string>
     <key>NSSpeechRecognitionUsageDescription</key>
     <string>ConvoCraft uses speech recognition to transcribe meeting audio in real-time.</string>
-    <key>NSScreenCaptureDescription</key>
-    <string>ConvoCraft needs screen capture permission to record system audio from meetings.</string>
+    <key>NSAudioCaptureUsageDescription</key>
+    <string>ConvoCraft captures system audio from meetings so it can transcribe and save both sides of the conversation.</string>
     <key>CFBundleName</key>
     <string>ConvoCraft</string>
     <key>CFBundleDisplayName</key>
@@ -29,7 +29,7 @@
     <key>CFBundleShortVersionString</key>
     <string>1.0</string>
     <key>LSMinimumSystemVersion</key>
-    <string>14.0</string>
+    <string>14.2</string>
     <key>LSApplicationCategoryType</key>
     <string>public.app-category.productivity</string>
     <key>CFBundleExecutable</key>

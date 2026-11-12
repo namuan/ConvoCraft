@@ -4,12 +4,13 @@ A macOS meeting assistant that provides real-time transcription and AI-driven in
 
 ![ConvoCraft Demo](assets/intro.png)
 
-> **Note**: This application is designed exclusively for macOS 14.0+ and requires macOS-specific frameworks (SwiftUI, Speech, AVFoundation, ScreenCaptureKit, NaturalLanguage). It will not build on Linux or other platforms.
+> **Note**: This application is designed exclusively for macOS 14.2+ and requires macOS-specific frameworks (SwiftUI, Speech, AVFoundation, CoreAudio, NaturalLanguage). It will not build on Linux or other platforms.
 
 ## Features
 
 ### During Meetings (Live)
-- 🎙 **Real-time transcription** using Apple's Speech framework
+- 🎙 **Real-time transcription** of microphone and system audio using Apple's on-device Speech framework
+- 💾 **Separate microphone and system audio recordings** saved locally per meeting
 - 💡 **AI-generated insights** including:
   - Clarifying questions
   - Suggested follow-ups
@@ -27,7 +28,7 @@ A macOS meeting assistant that provides real-time transcription and AI-driven in
 
 ConvoCraft is built exclusively with Apple frameworks:
 
-- **ScreenCaptureKit** - Audio capture (system + microphone)
+- **CoreAudio** - Separate microphone and system-audio capture
 - **Speech** - Real-time transcription
 - **NaturalLanguage** - Lightweight NLP for pattern detection
 - **SwiftUI** - Modern user interface
@@ -36,10 +37,12 @@ ConvoCraft is built exclusively with Apple frameworks:
 
 ## Requirements
 
-- macOS 14.0 or later
+- macOS 14.2 or later
 - Microphone permission
 - Speech recognition permission
-- Screen capture permission (for system audio)
+- System Audio Recording permission (for system audio)
+
+Meeting audio is saved as separate 16 kHz mono WAV files under `~/Documents/MeetingRecordings/`, one file for the microphone and one for system audio.
 
 ## Building
 
@@ -56,7 +59,7 @@ swift run
 - ✅ **Fully local processing** - No cloud APIs
 - ✅ **No network calls** - All AI runs on-device
 - ✅ **User-initiated recording** - No background recording
-- ✅ **Local storage only** - Transcripts never leave device
+- ✅ **Local storage only** - Transcripts and recordings never leave the device
 
 ## License
 

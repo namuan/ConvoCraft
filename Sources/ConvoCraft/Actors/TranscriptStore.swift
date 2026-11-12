@@ -15,7 +15,7 @@ actor TranscriptStore {
             finalizeCurrent()
         }
         
-        accumulatePartialText(newText, timestamp: segment.timestamp)
+        accumulatePartialText(newText, timestamp: segment.timestamp, source: segment.source)
         lastProcessedText = segment.text
     }
     
@@ -44,14 +44,15 @@ actor TranscriptStore {
         return hasSignificantLength || endsWithPunctuation
     }
     
-    private func accumulatePartialText(_ newText: String, timestamp: TimeInterval) {
+    private func accumulatePartialText(_ newText: String, timestamp: TimeInterval, source: AudioSource) {
         if let partial = partialSegment {
             let combinedText = partial.text + " " + newText
             partialSegment = TranscriptSegment(
                 id: partial.id,
                 text: combinedText,
                 timestamp: timestamp,
-                isFinal: false
+                isFinal: false,
+                source: source
             )
             print("📝 Accumulated partial: \(combinedText.count) chars total")
         } else {
@@ -59,7 +60,8 @@ actor TranscriptStore {
                 id: UUID(),
                 text: newText,
                 timestamp: timestamp,
-                isFinal: false
+                isFinal: false,
+                source: source
             )
             print("🆕 New partial segment: \(newText.prefix(60))... [\(newText.count) chars]")
         }
@@ -71,7 +73,8 @@ actor TranscriptStore {
                 id: partial.id,
                 text: partial.text,
                 timestamp: partial.timestamp,
-                isFinal: true
+                isFinal: true,
+                source: partial.source
             )
             segments.append(final)
             partialSegment = nil
@@ -90,7 +93,8 @@ actor TranscriptStore {
             id: UUID(),
             text: segment.text,
             timestamp: segment.timestamp,
-            isFinal: true
+            isFinal: true,
+            source: segment.source
         )
         segments.append(final)
         partialSegment = nil

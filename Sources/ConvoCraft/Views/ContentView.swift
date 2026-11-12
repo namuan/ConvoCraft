@@ -170,6 +170,11 @@ struct TranscriptSegmentView: View {
                 .foregroundColor(.secondary)
                 .frame(width: 60, alignment: .leading)
             
+            Text(segment.source.displayName)
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .frame(width: 48, alignment: .leading)
+
             Text(segment.text)
                 .textSelection(.enabled)
         }
@@ -542,7 +547,7 @@ struct SummaryDetailView: View {
                         Text("Transcript")
                             .font(.headline)
                         
-                        Text("No audio was captured during this meeting. Make sure:\n• Screen Recording permission is granted in System Settings\n• System audio is playing during the recording (e.g., from meetings, calls, or your browser)")
+                        Text("No audio was captured during this meeting. Make sure:\n• Microphone and System Audio Recording permissions are granted\n• System audio is playing during the recording")
                             .foregroundColor(.secondary)
                             .padding()
                             .frame(maxWidth: .infinity, alignment: .leading)

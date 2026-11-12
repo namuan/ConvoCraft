@@ -86,7 +86,7 @@ actor SummaryEngine {
     
     private func generateExtractiveSummary(from text: String) -> String {
         guard !text.isEmpty else { 
-            return "No audio was captured during this meeting. Ensure system audio is playing (e.g., from a video call, meeting, or browser) and Screen Recording permission is granted."
+            return "No audio was captured during this meeting. Ensure microphone and system audio are available and System Audio Recording permission is granted."
         }
         
         let sentences = splitIntoSentences(text)

@@ -2,10 +2,6 @@ import SwiftUI
 import Speech
 import AVFoundation
 
-#if canImport(ScreenCaptureKit)
-import ScreenCaptureKit
-#endif
-
 struct OnboardingView: View {
     @Binding var isOnboardingComplete: Bool
     @State private var currentStep = 0
@@ -57,10 +53,10 @@ struct OnboardingView: View {
                 
                 PermissionRow(
                     icon: "rectangle.on.rectangle",
-                    title: "Screen Recording",
-                    description: "Required to capture system audio from meetings",
-                    status: permissionsManager.screenRecordingGranted,
-                    action: { await permissionsManager.requestScreenRecording() }
+                    title: "System Audio Recording",
+                    description: "Required to capture the other side of your meetings",
+                    status: permissionsManager.systemAudioGranted,
+                    action: { await permissionsManager.requestSystemAudio() }
                 )
             }
             .padding()
@@ -100,7 +96,7 @@ struct OnboardingView: View {
             
             // Warning message - fixed height to prevent layout shifts
             Group {
-                if !permissionsManager.allPermissionsGranted && (permissionsManager.speechAuthStatus != .notDetermined || permissionsManager.microphoneGranted || permissionsManager.screenRecordingGranted) {
+                if !permissionsManager.allPermissionsGranted && (permissionsManager.speechAuthStatus != .notDetermined || permissionsManager.microphoneGranted || permissionsManager.systemAudioGranted) {
                     Text("Some permissions are missing. Please grant all permissions to continue.")
                         .font(.caption)
                         .foregroundColor(.orange)

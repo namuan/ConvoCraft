@@ -7,14 +7,23 @@ class MeetingSessionController {
     // Published state
     var isRecording = false
     var currentTranscript: [TranscriptSegment] = []
-    var partialTranscript: String = ""
+    var partialTranscript: String {
+        AudioSource.allCases.compactMap { source in
+            guard let text = partialTranscripts[source], !text.isEmpty else { return nil }
+            return "\(source.displayName): \(text)"
+        }.joined(separator: "\n")
+    }
+    private var partialTranscripts: [AudioSource: String] = [:]
     var insights: [IntelligenceInsight] = []
     var errorMessage: String?
     var lastSummary: MeetingSummary?
     
     // Services
-    private let speechTranscriber = SpeechTranscriber()
-    private let transcriptStore = TranscriptStore()
+    private let microphoneTranscriber = SpeechTranscriber(source: .microphone)
+    private let systemTranscriber = SpeechTranscriber(source: .system)
+    private let audioCaptureManager = AudioCaptureManager()
+    private let microphoneTranscriptStore = TranscriptStore()
+    private let systemTranscriptStore = TranscriptStore()
     private let intelligenceEngine = IntelligenceEngine()
     private let summaryEngine = SummaryEngine()
     private let persistenceLayer = PersistenceLayer()
@@ -22,7 +31,8 @@ class MeetingSessionController {
     // Session tracking
     private var sessionStartTime: Date?
     private var captureTask: Task<Void, Never>?
-    private var transcriptionTask: Task<Void, Never>?
+    private var transcriptionTasks: [Task<Void, Never>] = []
+    private var audioWriter: AudioRecordingWriter?
     private var analysisTask: Task<Void, Never>?
     private var lastAnalyzedTextHash: Int?
     
@@ -43,22 +53,34 @@ class MeetingSessionController {
         }
         logSuccess("All permissions granted!")
         
-        sessionStartTime = Date()
-        isRecording = true
+        let startDate = Date()
+        sessionStartTime = startDate
         errorMessage = nil
         
         logInfo("Clearing previous data...")
         // Clear previous data
-        await transcriptStore.clear()
+        await microphoneTranscriptStore.clear()
+        await systemTranscriptStore.clear()
         await intelligenceEngine.clearInsights()
         currentTranscript = []
-        partialTranscript = ""
+        partialTranscripts = [:]
         insights = []
         logSuccess("Previous data cleared")
-        
-        logInfo("Starting transcription flow...")
-        // Start transcription
-        startTranscriptionFlow()
+
+        do {
+            let stream = try await audioCaptureManager.startCapture()
+            audioWriter = try AudioRecordingWriter(startDate: startDate)
+            try await startTranscriptionFlows()
+            isRecording = true
+            startAudioFlow(stream)
+        } catch {
+            audioCaptureManager.stopCapture()
+            microphoneTranscriber.stopTranscription()
+            systemTranscriber.stopTranscription()
+            errorMessage = "Could not start audio recording: \(error.localizedDescription)"
+            logError(errorMessage ?? "Could not start audio recording")
+            return
+        }
         
         logInfo("Starting periodic analysis...")
         // Start periodic analysis
@@ -77,23 +99,35 @@ class MeetingSessionController {
         }
         
         logInfo("Stopping all tasks...")
-        // Stop all tasks
-        captureTask?.cancel()
-        transcriptionTask?.cancel()
         analysisTask?.cancel()
-        
-        logInfo("Stopping speech transcriber...")
-        speechTranscriber.stopTranscription()
-        
+        audioCaptureManager.stopCapture()
+        await captureTask?.value
+        captureTask = nil
+
+        logInfo("Stopping speech transcribers...")
+        microphoneTranscriber.stopTranscription()
+        systemTranscriber.stopTranscription()
+        transcriptionTasks.forEach { $0.cancel() }
+        transcriptionTasks.removeAll()
+        do {
+            let paths = try await audioWriter?.finish() ?? []
+            logInfo("Saved meeting audio: \(paths.joined(separator: ", "))")
+        } catch {
+            errorMessage = "Could not finalize meeting audio: \(error.localizedDescription)"
+            logError(errorMessage ?? "Could not finalize meeting audio")
+        }
+        audioWriter = nil
+
         isRecording = false
         logSuccess("Meeting stopped")
         
         // Finalize any partial transcript before generating summary
         logInfo("Finalizing partial transcripts...")
-        await transcriptStore.finalizeCurrent()
-        
+        await microphoneTranscriptStore.finalizeCurrent()
+        await systemTranscriptStore.finalizeCurrent()
+
         // Log final state with detailed segment info
-        let finalSegments = await transcriptStore.getAllSegments()
+        let finalSegments = await allTranscriptSegments()
         logInfo("📊 Final transcript has \(finalSegments.count) segments before summary generation")
         if !finalSegments.isEmpty {
             for (index, seg) in finalSegments.enumerated() {
@@ -107,51 +141,65 @@ class MeetingSessionController {
         Logger.shared.logSeparator()
     }
     
-    private func startTranscriptionFlow() {
-        logInfo("📝 Starting transcription flow from the selected microphone...")
-        transcriptionTask = Task {
-            do {
-                // AVAudioEngine reads the active macOS input device directly. This
-                // avoids ScreenCaptureKit's separate system/microphone streams and
-                // ensures spoken audio is sent to SFSpeechRecognizer unchanged.
-                let transcriptStream = try await speechTranscriber.startTranscription()
-                logSuccess("Microphone transcription stream obtained, listening for results...")
-                
-                for await (text, isFinal) in transcriptStream {
-                    guard !Task.isCancelled else { break }
-                    
-                    logDebug("📥 Received: isFinal=\(isFinal), length=\(text.count), text=\(text.prefix(100))...")
-                    
-                    let timestamp = Date().timeIntervalSince1970
-                    let segment = TranscriptSegment(
-                        text: text,
-                        timestamp: timestamp,
-                        isFinal: isFinal
-                    )
-                    
-                    if isFinal {
-                        logInfo("✅ FINAL segment received, adding to store")
-                        await transcriptStore.addFinalSegment(segment)
-                        
-                        // Verify it was added and show total
-                        let allSegs = await transcriptStore.getAllSegments()
-                        logInfo("📊 Store now has \(allSegs.count) segments, total chars: \(allSegs.reduce(0) { $0 + $1.text.count })")
-                        
-                        await updateCurrentTranscript()
-                        partialTranscript = ""
-                    } else {
-                        logDebug("⏳ Partial segment, updating UI")
-                        await transcriptStore.addPartialSegment(segment)
-                        partialTranscript = text
-                    }
+    private func startTranscriptionFlows() async throws {
+        let speechAuth = await microphoneTranscriber.requestAuthorization()
+        microphoneTranscriber.updateAuthorizationStatus(speechAuth)
+        systemTranscriber.updateAuthorizationStatus(speechAuth)
+        let microphoneStream = try microphoneTranscriber.startTranscription()
+        let systemStream = try systemTranscriber.startTranscription()
+        transcriptionTasks = [
+            consumeTranscription(microphoneStream, source: .microphone),
+            consumeTranscription(systemStream, source: .system)
+        ]
+    }
+
+    private func startAudioFlow(_ stream: AsyncStream<AudioChunk>) {
+        captureTask = Task {
+            for await chunk in stream {
+                guard !Task.isCancelled else { break }
+                switch chunk.source {
+                case .microphone:
+                    microphoneTranscriber.append(chunk.samples)
+                case .system:
+                    systemTranscriber.append(chunk.samples)
                 }
-                logWarning("Transcription stream ended")
-            } catch {
-                let errorMsg = "Transcription error: \(error.localizedDescription)"
-                logError(errorMsg)
-                errorMessage = errorMsg
+                do {
+                    try await audioWriter?.append(chunk)
+                } catch {
+                    errorMessage = "Could not save meeting audio: \(error.localizedDescription)"
+                    logError(errorMessage ?? "Could not save meeting audio")
+                }
             }
         }
+    }
+
+    private func consumeTranscription(_ stream: AsyncStream<(String, Bool)>, source: AudioSource) -> Task<Void, Never> {
+        Task {
+            for await (text, isFinal) in stream {
+                guard !Task.isCancelled else { break }
+                let segment = TranscriptSegment(
+                    text: text,
+                    timestamp: Date().timeIntervalSince1970,
+                    isFinal: isFinal,
+                    source: source
+                )
+                let store = source == .microphone ? microphoneTranscriptStore : systemTranscriptStore
+                if isFinal {
+                    await store.addFinalSegment(segment)
+                    partialTranscripts[source] = nil
+                    await updateCurrentTranscript()
+                } else {
+                    await store.addPartialSegment(segment)
+                    partialTranscripts[source] = text
+                }
+            }
+        }
+    }
+
+    private func allTranscriptSegments() async -> [TranscriptSegment] {
+        let microphone = await microphoneTranscriptStore.getAllSegments()
+        let system = await systemTranscriptStore.getAllSegments()
+        return (microphone + system).sorted { $0.timestamp < $1.timestamp }
     }
     
     private func startPeriodicAnalysis() {
@@ -171,14 +219,17 @@ class MeetingSessionController {
                 logDebug("🔄 Periodic analysis cycle #\(analysisCount)")
                 
                 // Finalize any accumulated partial segment periodically
-                let partialCount = await transcriptStore.getPartialSegment() != nil ? 1 : 0
-                if partialCount > 0 {
-                    logInfo("⏱ Finalizing partial segment (periodic)")
-                    await transcriptStore.finalizeCurrent()
+                if await microphoneTranscriptStore.getPartialSegment() != nil {
+                    await microphoneTranscriptStore.finalizeCurrent()
                 }
-                
+                if await systemTranscriptStore.getPartialSegment() != nil {
+                    await systemTranscriptStore.finalizeCurrent()
+                }
+                await updateCurrentTranscript()
+
                 // Get recent transcript
-                let recentSegments = await transcriptStore.getRecentTranscript(lastMinutes: 2.0)
+                let cutoff = Date().timeIntervalSince1970 - 120
+                let recentSegments = await allTranscriptSegments().filter { $0.timestamp >= cutoff }
                 logInfo("📝 Got \(recentSegments.count) recent transcript segments (last 2 minutes)")
                 
                 if !recentSegments.isEmpty {
@@ -220,15 +271,16 @@ class MeetingSessionController {
     }
     
     private func updateCurrentTranscript() async {
-        currentTranscript = await transcriptStore.getAllSegments()
+        currentTranscript = await allTranscriptSegments()
     }
     
     private func checkAllPermissions() async -> Bool {
         logInfo("🔐 Checking all permissions...")
         
         logDebug("Requesting speech recognition authorization...")
-        let speechAuth = await speechTranscriber.requestAuthorization()
-        speechTranscriber.updateAuthorizationStatus(speechAuth)
+        let speechAuth = await microphoneTranscriber.requestAuthorization()
+        microphoneTranscriber.updateAuthorizationStatus(speechAuth)
+        systemTranscriber.updateAuthorizationStatus(speechAuth)
         logInfo("Speech recognition status: \(speechAuth.rawValue)")
         
         guard speechAuth == .authorized else {
@@ -236,7 +288,7 @@ class MeetingSessionController {
         }
         
         logDebug("Checking microphone permission...")
-        let micGranted = await speechTranscriber.requestMicrophonePermission()
+        let micGranted = await microphoneTranscriber.requestMicrophonePermission()
         logInfo("Microphone permission: \(micGranted ? "granted" : "denied")")
         
         guard micGranted else {
@@ -260,7 +312,7 @@ class MeetingSessionController {
         }
         
         let duration = Date().timeIntervalSince(startTime)
-        let allSegments = await transcriptStore.getAllSegments()
+        let allSegments = await allTranscriptSegments()
         let allInsights = await intelligenceEngine.getAllInsights()
         
         logInfo("📊 Generating final summary...")

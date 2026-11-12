@@ -6,7 +6,7 @@ import PackageDescription
 let package = Package(
     name: "ConvoCraft",
     platforms: [
-        .macOS(.v14)
+        .macOS("14.2")
     ],
     targets: [
         .executableTarget(
